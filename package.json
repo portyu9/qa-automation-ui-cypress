@@ -1,0 +1,22 @@
+{
+  "name": "qa-ui-cypress",
+  "version": "1.0.0",
+  "description": "UI end-to-end testing framework using Cypress and Page Objects",
+  "main": "index.js",
+  "scripts": {
+    "test": "cypress run",
+    "cypress:open": "cypress open",
+    "cypress:run": "cypress run"
+  },
+  "keywords": [
+    "cypress",
+    "e2e",
+    "page object",
+    "testing"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "cypress": "^13.7.0"
+  }
+}
