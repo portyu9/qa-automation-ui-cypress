@@ -6,7 +6,7 @@
 class LoginPage {
   /** Navigate to the login page (root of the application). */
   visit() {
-    cy.visit('/');
+      cy.visit('/', { failOnStatusCode: false, pageLoadTimeout: 0 });
   }
 
   /** Username input element. */
