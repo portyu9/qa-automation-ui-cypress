@@ -12,6 +12,8 @@ module.exports = defineConfig({
     baseUrl: 'https://www.saucedemo.com',
     specPattern: 'cypress/e2e/**/*.cy.js',
     supportFile: 'cypress/support/e2e.js',
+        pageLoadTimeout: 120000,
+    
     setupNodeEvents(on, config) {
       // implement node event listeners here if needed
     }
