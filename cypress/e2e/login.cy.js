@@ -15,7 +15,7 @@ describe('Sauce Demo Login', () => {
 
   it('should log in with valid credentials', () => {
     cy.fixture('users').then(({ validUser }) => {
- //      loginPage.login(validUser.username, validUser.password););
+ 
             loginPage.login(validUser.username, validUser.password);
       // Assert that at least one inventory item is visible
       inventoryPage.inventoryItems().should('have.length.at.least', 1);
@@ -26,7 +26,7 @@ describe('Sauce Demo Login', () => {
     cy.fixture('users').then(({ invalidUser }) => {
       loginPage.login(invalidUser.username, invalidUser.password);
       // The error message element should be visible on login failure
-      LoginPage
+loginPage
         .errorMessage()
         .should('be.visible');
     });
