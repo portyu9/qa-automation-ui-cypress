@@ -18,7 +18,7 @@ describe('Sauce Demo Login', () => {
  
             loginPage.login(validUser.username, validUser.password);
       // Assert that at least one inventory item is visible
-      inventoryPage.inventoryItems().should('have.length.at.least', 1);
+      inventoryPage.inventoryItems.should('have.length.at.least', 1);
     });
   });
 
