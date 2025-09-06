@@ -69,6 +69,3 @@ qa-ui-cypress/
 * Record videos and capture screenshots by configuring the `video` and `screenshotOnRunFailure` settings in `cypress.config.js`.
 * Integrate with dashboard services for reporting.
 
-### License
-
-This repository is licensed under the MIT License – see the `LICENSE` file for details.
