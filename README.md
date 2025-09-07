@@ -1,6 +1,6 @@
 ## UI End‑to‑End Testing Framework – Cypress & Page Objects
 
-I built this repository to demonstrate how I approach browser‑based end‑to‑end testing using **Cypress**.  The goal is to create a clean, maintainable framework that scales well as the application grows.  To achieve that, I organize selectors and actions into **Page Object classes** and keep test logic separate from page structure.  This approach helps reduce duplication and makes it clear what each test is exercising.
+I built this repository to demonstrate how I approach browser‑based end‑to‑end testing using **Cypress**.  The goal is to create a clean, maintainable framework that scales well as the application grows.  To achieve that, I organize selectors and actions into **Page Object classes** and keep test logic separate from page structure.  This approach helps reduce duplication and makes it clear what each test is exercising with GitHub Actions CI.
 
 ### Why Cypress?
 
