@@ -4,6 +4,17 @@
 [![Extended](https://github.com/portyu9/qa-automation-ui-cypress/actions/workflows/extended.yml/badge.svg)](https://github.com/portyu9/qa-automation-ui-cypress/actions/workflows/extended.yml)
 [![Security](https://github.com/portyu9/qa-automation-ui-cypress/actions/workflows/security.yml/badge.svg)](https://github.com/portyu9/qa-automation-ui-cypress/actions/workflows/security.yml)
 
+[![Node.js](https://img.shields.io/badge/Node.js-22%2B-339933)](https://nodejs.org/)
+[![JavaScript](https://img.shields.io/badge/JavaScript-ES2022-F7DF1E)](https://developer.mozilla.org/docs/Web/JavaScript)
+[![Cypress](https://img.shields.io/badge/Cypress-15.21.1-17202C)](https://www.cypress.io/)
+[![Chrome](https://img.shields.io/badge/Chrome-primary%20browser-4285F4)](https://www.google.com/chrome/)
+[![Firefox](https://img.shields.io/badge/Firefox-extended%20browser-FF7139)](https://www.mozilla.org/firefox/)
+[![Electron](https://img.shields.io/badge/Electron-supported-47848F)](https://www.electronjs.org/)
+[![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-CI-2088FF)](https://github.com/features/actions)
+[![Trivy](https://img.shields.io/badge/Trivy-security%20scan-1904DA)](https://trivy.dev/)
+[![License](https://img.shields.io/badge/License-MIT-2EA44F)](LICENSE)
+[![Security Policy](https://img.shields.io/badge/Security-Policy-6E7781)](.github/SECURITY.md)
+
 A Cypress browser quality-engineering framework built around native command retryability, explicit test isolation, stable selector contracts, feature-oriented page modules, validated runtime configuration, structured run diagnostics, and reproducible CI. Framework code extends Cypress only where it enforces a durable policy; it does not replace Cypress's command queue with another synchronization or abstraction layer.
 
 > [!IMPORTANT]
