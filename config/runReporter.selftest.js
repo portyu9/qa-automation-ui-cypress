@@ -25,17 +25,29 @@ const manifest = buildRunManifest(
           {
             title: ['login', 'fails'],
             state: 'failed',
-            attempts: [{ state: 'failed', error: { message: 'expected failure' } }],
+            attempts: [
+              {
+                state: 'failed',
+                error: {
+                  message:
+                    'Authorization=Bearer abc123 at https://example.test/login?token=secret',
+                },
+              },
+            ],
           },
         ],
       },
     ],
   },
-  { runId: 'run-123', baseUrl: 'https://example.test' }
+  {
+    runId: 'run-123',
+    baseUrl: 'https://user:password@example.test/app?access_token=secret#fragment',
+  }
 );
 
 assert.equal(manifest.schemaVersion, 1);
 assert.equal(manifest.runId, 'run-123');
+assert.equal(manifest.baseUrl, 'https://example.test/app');
 assert.deepEqual(manifest.totals, {
   tests: 2,
   passed: 1,
@@ -44,5 +56,7 @@ assert.deepEqual(manifest.totals, {
   skipped: 0,
   durationMs: 1234,
 });
-assert.equal(manifest.runs[0].tests[1].error, 'expected failure');
+assert.equal(manifest.runs[0].tests[1].error.includes('abc123'), false);
+assert.equal(manifest.runs[0].tests[1].error.includes('?token=secret'), false);
+assert.equal(manifest.runs[0].tests[1].error.includes('<redacted>'), true);
 console.log('run reporter contract: ok');
