@@ -1,5 +1,6 @@
 const { defineConfig } = require('cypress');
 const { loadRuntime } = require('./config/runtime');
+const { writeRunManifest } = require('./config/runReporter');
 
 const runtime = loadRuntime();
 
@@ -27,6 +28,10 @@ module.exports = defineConfig({
           console.log(`[cypress:${runtime.runId}] ${String(message)}`);
           return null;
         },
+      });
+
+      on('after:run', (results) => {
+        writeRunManifest(config.projectRoot, runtime, results);
       });
 
       config.env.runId = runtime.runId;
