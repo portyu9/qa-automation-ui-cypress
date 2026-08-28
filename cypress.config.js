@@ -13,6 +13,10 @@ module.exports = defineConfig({
   pageLoadTimeout: runtime.pageLoadTimeout,
   screenshotOnRunFailure: true,
   trashAssetsBeforeRuns: true,
+  allowCypressEnv: false,
+  expose: {
+    runId: runtime.runId,
+  },
   retries: {
     runMode: 2,
     openMode: 0,
@@ -34,7 +38,6 @@ module.exports = defineConfig({
         writeRunManifest(config.projectRoot, runtime, results);
       });
 
-      config.env.runId = runtime.runId;
       return config;
     },
   },
