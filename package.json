@@ -9,6 +9,7 @@
   "scripts": {
     "test": "cypress run",
     "test:chrome": "cypress run --browser chrome",
+    "test:firefox": "cypress run --browser firefox",
     "test:electron": "cypress run --browser electron",
     "test:login": "cypress run --spec cypress/e2e/login.cy.js",
     "cypress:open": "cypress open",

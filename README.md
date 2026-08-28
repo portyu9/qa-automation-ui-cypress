@@ -1,43 +1,76 @@
-# Cypress UI Automation Framework
+# Cypress UI Quality Engineering Framework
 
-A Cypress end-to-end framework for browser workflows with validated runtime settings, page-oriented abstractions, stable selector contracts, native retryability, run-level diagnostics, and reproducible CI execution. The framework uses Cypress's own command queue and Node event lifecycle instead of introducing a second synchronization or reporting layer.
+[![CI](https://github.com/portyu9/qa-automation-ui-cypress/actions/workflows/ci.yml/badge.svg)](https://github.com/portyu9/qa-automation-ui-cypress/actions/workflows/ci.yml)
+[![Extended](https://github.com/portyu9/qa-automation-ui-cypress/actions/workflows/extended.yml/badge.svg)](https://github.com/portyu9/qa-automation-ui-cypress/actions/workflows/extended.yml)
+[![Security](https://github.com/portyu9/qa-automation-ui-cypress/actions/workflows/security.yml/badge.svg)](https://github.com/portyu9/qa-automation-ui-cypress/actions/workflows/security.yml)
 
-## Engineering contract
+A Cypress browser quality-engineering framework built around native command retryability, explicit test isolation, stable selector contracts, feature-oriented page modules, validated runtime configuration, structured run diagnostics, and reproducible CI. Framework code extends Cypress only where it enforces a durable policy; it does not replace Cypress's command queue with another synchronization or abstraction layer.
 
-| Concern | Framework policy |
+> [!IMPORTANT]
+> Cypress retryability is a condition-based synchronization engine, not permission to make tests vague. The test still needs an observable contract: the correct request, page state, element state, route, or domain outcome must become true within a bounded budget.
+
+## Capability map
+
+| Plane | What it proves | Execution | Evidence |
+| --- | --- | --- | --- |
+| Primary CI | Runtime contract + critical browser flow | Chrome / Node 22 | Run manifest, screenshots, video |
+| Extended browser | Browser compatibility | Chrome + Firefox | Independent per-browser evidence |
+| Component-style isolation | UI behavior under controlled backend responses | `cy.intercept()` when justified | Native command/assertion output |
+| Security | Dependency/configuration exposure | Pinned Trivy filesystem scan | JSON findings + Markdown summary |
+| Observability | Run/browser/gate identity | Structured envelope + run manifest | `reports/ci-observability.json`, Actions summary |
+
+```mermaid
+flowchart LR
+    CHANGE[Change] --> CFG[Runtime + reporter self-check]
+    CFG --> CH[Chrome primary gate]
+    CHANGE --> SEC[Security gate]
+    CHANGE -->|browser/framework paths| EXT[Extended]
+    EXT --> C[Chrome]
+    EXT --> F[Firefox]
+    CH --> EV[Manifest · Screenshots · Video · Observability]
+    C --> EV
+    F --> EV
+    SEC --> EV
+```
+
+## Engineering invariants
+
+| Concern | Framework contract |
 | --- | --- |
-| Selectors | Prefer stable `data-test` contracts; avoid generated classes and DOM-depth selectors. |
-| Synchronization | Rely on Cypress command/assertion retryability and observable network/UI state; fixed waits are not readiness checks. |
-| Isolation | `testIsolation` remains enabled; tests must not require execution order or shared browser state. |
-| Page abstractions | Feature-specific operations live in page modules; the global command surface stays intentionally small. |
-| Sensitive values | Password typing disables Cypress command logging; credentials remain runtime/fixture concerns rather than diagnostics. |
-| Retries | Run-mode retries are bounded and diagnostic, not a definition of correctness. |
-| Evidence | Screenshots/video plus `reports/run-manifest.json` provide visual and structured failure context. |
-| CI | Chrome is the primary gate, dependencies are installed with `npm ci`, and artifacts have bounded retention. |
+| Selectors | Prefer stable `data-test` contracts; styling classes and DOM depth are not primary test interfaces. |
+| Synchronization | Use Cypress command/assertion retryability and observable network/UI state; fixed numeric waits are prohibited as readiness. |
+| Isolation | `testIsolation` stays enabled; no test depends on predecessor state. |
+| Page modules | Feature behavior belongs in page modules; the global custom-command surface stays intentionally small. |
+| Sensitive input | Password entry suppresses Cypress command logging. |
+| Retries | Run-mode retries are bounded diagnostics, never the definition of correctness. |
+| Reporting | `after:run` produces an atomic privacy-aware run manifest; reporter mapping is self-tested without a browser. |
+| Reproducibility | Node 22+, committed lockfile, `npm ci`, Cypress binary verification. |
+| Browser coverage | Chrome is the fast gate; Firefox is an independent extended signal. |
 
 ## Architecture
 
 ```mermaid
-flowchart LR
-    CI[GitHub Actions] --> CYP[Cypress runner]
-    CYP --> SPEC[E2E specs]
-    SPEC --> PAGE[Page modules]
+flowchart TD
+    CYP[Cypress runner] --> SPEC[E2E specs]
+    SPEC --> PAGE[Feature page modules]
     SPEC --> CMD[Small custom-command surface]
-    CYP --> EVT[Node event lifecycle]
-    EVT --> MAN[Run manifest]
+    CYP --> RETRY[Native retryability]
+    CYP --> EVENT[Node event lifecycle]
+    EVENT --> MAN[run-manifest.json]
     CYP --> SS[Screenshots]
     CYP --> VID[Video]
-    MAN --> ART[CI evidence]
-    SS --> ART
-    VID --> ART
+    MAN --> OBS[CI evidence]
+    SS --> OBS
+    VID --> OBS
 ```
 
-## Repository layout
+## Repository map
 
 ```text
 .
 ├── config/
 │   ├── runtime.js
+│   ├── runtime.selftest.js
 │   ├── runReporter.js
 │   └── runReporter.selftest.js
 ├── cypress/
@@ -48,14 +81,16 @@ flowchart LR
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   └── TEST_STRATEGY.md
+├── .github/workflows/
+│   ├── ci.yml
+│   ├── extended.yml
+│   └── security.yml
 ├── cypress.config.js
 ├── package.json
 └── package-lock.json
 ```
 
 ## Quick start
-
-Node.js 22+ is required.
 
 ```bash
 npm ci
@@ -64,212 +99,244 @@ npm run cypress:verify
 npm run test:chrome
 ```
 
-For local interactive work:
+Interactive diagnosis:
 
 ```bash
 npm run cypress:open
 ```
 
-`npm ci` is the normal dependency installation path. Use `npm install` only for intentional dependency changes and commit the updated lockfile with the manifest change.
+Firefox compatibility:
 
-## Commands
+```bash
+npm run test:firefox
+```
+
+> [!NOTE]
+> `npm ci` is the normal execution path. `npm install` is reserved for deliberate dependency changes that produce a reviewed manifest/lockfile diff.
+
+<details>
+<summary><strong>Command reference</strong></summary>
 
 | Command | Purpose |
 | --- | --- |
-| `npm test` | Run the full suite headlessly with Cypress's default browser selection. |
-| `npm run test:chrome` | Execute the CI-equivalent Chrome gate. |
-| `npm run test:electron` | Execute the suite using bundled Electron. |
-| `npm run test:login` | Run the focused login spec. |
-| `npm run cypress:open` | Start the interactive Cypress runner. |
-| `npm run cypress:verify` | Verify the installed Cypress binary. |
-| `npm run config:check` | Load validated runtime config and execute the run-reporter contract self-test. |
+| `npm test` | Headless Cypress suite using default browser selection. |
+| `npm run test:chrome` | Primary CI-equivalent Chrome gate. |
+| `npm run test:firefox` | Firefox compatibility execution. |
+| `npm run test:electron` | Bundled Electron execution. |
+| `npm run test:login` | Focused login spec. |
+| `npm run cypress:open` | Interactive runner. |
+| `npm run cypress:verify` | Verify installed Cypress binary. |
+| `npm run config:check` | Runtime + reporter self-tests and config loading. |
+
+</details>
 
 ## Runtime configuration
 
-`config/runtime.js` validates Node-side runtime policy before the browser test begins.
+`config/runtime.js` validates Node-side execution policy before Cypress begins browser work.
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `CYPRESS_BASE_URL` | Application base URL | `https://www.saucedemo.com` |
-| `CYPRESS_COMMAND_TIMEOUT_MS` | Cypress command retry budget | `10000` |
+| `CYPRESS_BASE_URL` | Application target | `https://www.saucedemo.com` |
+| `CYPRESS_COMMAND_TIMEOUT_MS` | Command/assertion retry budget | `10000` |
 | `CYPRESS_REQUEST_TIMEOUT_MS` | Request connection budget | `10000` |
-| `CYPRESS_RESPONSE_TIMEOUT_MS` | Response wait budget | `30000` |
-| `CYPRESS_PAGE_LOAD_TIMEOUT_MS` | Navigation/page-load budget | `60000` |
-| `TEST_RUN_ID` | Cross-run diagnostic correlation | generated locally / CI run ID |
+| `CYPRESS_RESPONSE_TIMEOUT_MS` | Response budget | `30000` |
+| `CYPRESS_PAGE_LOAD_TIMEOUT_MS` | Page-load budget | `60000` |
+| `TEST_RUN_ID` | Run/evidence correlation | generated locally / CI run ID |
 
-`.env.example` is documentation only. Inject environment-specific values through the shell or CI environment. Credentials should not be committed.
+Runtime URLs are validated before browser execution. Invalid configuration is a framework failure, not a reason to increase Cypress timeouts.
 
 ## Selector contract
 
-The framework exposes `cy.getByTestId()` for stable `data-test` selectors. This is intentionally a small global abstraction because it enforces a real cross-application convention.
-
-Prefer:
+The global `cy.getByTestId()` command exists because it enforces a real, stable convention:
 
 ```js
 cy.getByTestId('login-button').click();
 ```
 
-Avoid selectors coupled to styling or document shape:
+Avoid coupling tests to styling/document shape:
 
 ```js
 cy.get('.btn.primary:nth-child(2)');
 cy.get('main > div > div:nth-child(3) input');
 ```
 
-A selector is part of the testability contract. It should survive CSS refactors that do not change user behavior.
+A stable selector is part of product testability. It should survive refactors that do not change user-visible behavior.
 
 ## Synchronization model
 
-Cypress commands and `.should()` assertions retry until the configured timeout. Use that behavior instead of fixed delays.
-
-For network-driven transitions:
+Cypress commands and `.should()` assertions retry until success or the configured deadline. For network-driven transitions, synchronize to the actual dependency event and then the observable UI state:
 
 ```js
 cy.intercept('POST', '/api/orders').as('createOrder');
-// trigger the action
+// trigger behavior
 cy.wait('@createOrder')
   .its('response.statusCode')
   .should('eq', 201);
 cy.getByTestId('order-status').should('contain.text', 'Created');
 ```
 
-This proves that the relevant request completed and the UI reached an observable state. `cy.wait(3000)` proves neither.
-
-## Page modules and custom commands
-
-Page modules own feature-specific locators and operations. Global custom commands are reserved for cross-cutting behavior that has a stable semantic contract.
-
-Use a page module when the operation belongs to one feature:
+Avoid:
 
 ```js
-loginPage.login(username, password);
-inventoryPage.assertLoaded();
+cy.wait(3000);
 ```
 
-Use a custom command only when the convention is genuinely framework-wide, such as stable test-id selection or carefully controlled authentication setup.
+A numeric wait cannot distinguish a healthy slow transition from a request that never happened.
 
-Do not build generic wrappers around `cy.click`, `cy.type`, or `cy.request`; those remove native Cypress context without enforcing additional policy.
+## Test isolation and sessions
 
-## Isolation, sessions, and state
+`testIsolation: true` is a framework invariant. Every test establishes its required state.
 
-`testIsolation: true` is deliberate. Each test should establish the state it requires.
-
-`cy.session()` is appropriate only when:
+`cy.session()` is justified only when:
 
 - setup is materially expensive;
-- the cached session has an explicit validation function;
-- reuse does not create cross-test business-state coupling;
-- the behavior under test is not the authentication setup itself.
+- the cached session has an explicit validation contract;
+- reuse does not share mutable business state;
+- authentication setup itself is not the behavior under test.
 
-Stateful test data should be unique where the target application allows it. Shared static users can be acceptable for read-only/public examples but should not become a general production test-data strategy.
+Do not disable isolation to make ordering dependencies work.
 
-## Network stubbing
+## Network stubbing policy
 
-`cy.intercept()` should be used intentionally.
+`cy.intercept()` is appropriate when the requirement is UI behavior under a controlled dependency condition, for example:
 
-A useful stub can:
+- deterministic error states;
+- outbound request-shape assertions;
+- rare response classes;
+- UI isolation from a dependency outside the scope of the test.
 
-- force a deterministic dependency failure;
-- validate an outbound request contract;
-- isolate UI behavior from a service not under test;
-- reproduce a rare response class.
-
-Critical end-to-end paths should retain at least one real integration route. A suite in which every backend interaction is stubbed is a component test suite, not end-to-end coverage.
+At least one critical path should retain a real integration route. If every backend interaction is stubbed, the suite is a browser component suite—not end-to-end coverage.
 
 ## Structured run manifest
 
-The Node event layer registers Cypress's `after:run` event and writes:
+The Node event layer uses supported Cypress `after:run` lifecycle data to write:
 
 ```text
 reports/run-manifest.json
 ```
 
-The manifest includes:
+It includes schema/run identity, sanitized target context, browser/platform/runtime, aggregate counts/duration, per-spec statistics, and per-test final state/attempt/failure metadata. Messages are bounded and sensitive URL components are removed.
 
-- schema version and `TEST_RUN_ID`;
-- configured base URL;
-- browser name/version;
-- operating system and Cypress version;
-- aggregate tests/passed/failed/pending/skipped/duration;
-- per-spec statistics;
-- per-test final state, attempt count, and bounded final failure message.
+The file is written to a temporary path and atomically renamed. `config/runReporter.selftest.js` validates mapping behavior with synthetic Cypress result data, so reporting infrastructure can fail fast without browser startup.
 
-The file is written through a temporary path and atomically renamed so CI does not retain partially serialized JSON after interruption.
+## Cross-browser strategy
 
-`config/runReporter.selftest.js` validates the reporter mapping with a deterministic synthetic Cypress result object. That check runs as part of `npm run config:check`, so reporting infrastructure is tested without launching a browser.
+Primary CI uses Chrome. `extended.yml` executes both Chrome and Firefox on browser/framework changes, `main`, schedule, and manual dispatch.
+
+Each browser cell:
+
+- performs the runtime/reporter self-check;
+- verifies the Cypress binary;
+- runs the same suite through explicit browser selection;
+- receives a browser-specific run ID;
+- uploads independent structured/visual evidence.
+
+A Firefox-only failure is a compatibility signal. It should be analyzed for rendering, event/input, browser API, timing, or application behavior before shared selectors/assertions are weakened.
+
+## Security engineering
+
+`.github/workflows/security.yml` runs open-source Trivy filesystem scanning. The action is pinned to immutable commit `ed142fd0673e97e23eac54620cfb913e5ce36c25` (`v0.36.0`) with Trivy engine `v0.74.0`.
+
+The gate focuses on configured fixed HIGH/CRITICAL dependency vulnerabilities and HIGH/CRITICAL supported repository/configuration misconfigurations. JSON findings plus a Markdown count summary are retained under `reports/security/`.
+
+## Observability model
+
+Primary CI emits:
+
+```text
+reports/
+├── run-manifest.json
+├── ci-observability.json
+└── ci-summary.md
+```
+
+The observability envelope records framework identity, run ID, Node/browser dimension, final job state, commit SHA, and ref. The run manifest contains richer test-level detail; screenshots/video provide visual state.
+
+```text
+GitHub Actions run
+└── TEST_RUN_ID
+    ├── Cypress browser/runtime
+    ├── per-spec/test manifest entries
+    ├── screenshots/video
+    └── CI observability envelope
+```
+
+No external analytics service is required. These artifacts are intentionally portable for later ingestion by open-source log/telemetry tooling.
 
 ## Evidence model
 
 ```text
 Failure evidence
-├── Cypress assertion/command log
+├── Cypress assertion / command log
 ├── screenshots/
 ├── videos/
-└── reports/run-manifest.json
-    ├── browser/platform/runtime
-    ├── aggregate totals
-    ├── per-spec stats
-    └── final test attempt/error identity
+├── reports/run-manifest.json
+│   ├── runtime/browser
+│   ├── aggregate totals
+│   └── final test attempt/error
+└── reports/ci-observability.json
 ```
-
-Structured evidence is intended for CI triage and later automation. It does not replace Cypress's visual artifacts.
 
 ## CI topology
 
 ```mermaid
 flowchart TD
-    PR[Push / pull request] --> INSTALL[npm ci
-lockfile-backed cache]
+    PR[Push / PR] --> INSTALL[npm ci]
     INSTALL --> CFG[Runtime + reporter self-check]
     CFG --> VERIFY[Cypress binary verification]
-    VERIFY --> CHROME[Chrome E2E gate]
-    CHROME --> ART[reports + screenshots + video]
+    VERIFY --> CH[Chrome gate]
+    PR --> SEC[Trivy security]
+    BCHANGE[Browser/framework change] --> EXT[Extended]
+    EXT --> C[Chrome]
+    EXT --> F[Firefox]
+    CH --> ART[Structured + visual evidence]
+    C --> ART
+    F --> ART
 ```
-
-The workflow has read-only repository permissions, a bounded job timeout, branch-scoped concurrency cancellation, and bounded artifact retention.
 
 ## Failure triage
 
-| Failure | First classification step |
-| --- | --- |
-| `config:check` fails | Fix invalid runtime values or reporter mapping before browser diagnosis. |
-| Cypress binary verification fails | Runner/cache/binary issue, not application behavior. |
-| Command times out | Inspect selector contract and observable application state; do not immediately increase timeout. |
-| Intercept wait times out | Determine whether request was never sent, alias pattern is wrong, or dependency is stalled. |
-| Test passes only on retry | Inspect state leakage, environment saturation, and transition synchronization. |
-| Chrome-only failure | Compare browser-specific rendering/input behavior before weakening shared assertions. |
-| Run manifest missing | Inspect Node event lifecycle/config loading; screenshots alone do not prove reporting health. |
+| Signal | First interpretation | First evidence |
+| --- | --- | --- |
+| `config:check` | Runtime/reporter contract | Node self-test output |
+| Cypress verification | Binary/cache/runner | Cypress verification log |
+| Command timeout | Selector/application state | command log + screenshot |
+| Intercept timeout | Request not sent/pattern/dependency | network alias behavior |
+| Retry-only pass | State/timing/environment | first attempt + manifest |
+| Firefox-only failure | Browser compatibility | per-browser artifacts |
+| Missing run manifest | Node event lifecycle | config/reporter output |
+| Trivy failure | Dependency/configuration risk | `trivy.json` |
 
 ## Extension rules
 
-When extending the framework:
+1. validate new runtime values in `config/runtime.js`;
+2. keep feature operations in page modules;
+3. add global commands only for stable cross-cutting conventions;
+4. unit/self-test Node-side framework helpers without Cypress when possible;
+5. use supported Node event hooks for operational reporting;
+6. preserve `testIsolation`;
+7. keep diagnostics bounded and privacy-aware;
+8. use network stubbing intentionally and document what integration it replaces;
+9. expand browser coverage based on browser risk;
+10. keep lockfile and CI dependency behavior reproducible.
 
-- add runtime values to `config/runtime.js` with validation;
-- keep page behavior feature-specific;
-- add custom commands only for stable cross-cutting conventions;
-- test Node-side framework helpers without requiring Cypress where possible;
-- use `after:run`/other supported Node events for operational reporting;
-- keep generated reports under ignored artifact directories;
-- preserve `testIsolation` unless a documented architectural reason requires otherwise;
-- keep failure evidence bounded and free of credentials.
+## Explicit anti-patterns
 
-## Anti-patterns
-
-The framework intentionally avoids:
-
-- `cy.wait(number)` as synchronization;
-- generated CSS classes and DOM depth as primary selectors;
-- disabling test isolation to make ordering work;
-- global commands for every page action;
-- passwords typed with normal command logging;
-- hiding failed Cypress exit codes in CI;
+- `cy.wait(number)` as readiness;
+- generated CSS classes/DOM depth as primary selectors;
+- disabling isolation to make order dependence pass;
+- global custom commands for every page action;
+- credentials typed with ordinary Cypress logging;
+- hidden Cypress exit codes;
 - unbounded reporter payloads;
-- retry count increases used to hide nondeterminism;
-- `npm install` in CI with a mutable dependency graph.
+- retry increases masking nondeterminism;
+- `npm install` in CI;
+- every backend request stubbed while calling the suite end-to-end.
 
-## Further design documentation
+## Design references
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — browser, page, command, and Node-event boundaries.
-- [`docs/TEST_STRATEGY.md`](docs/TEST_STRATEGY.md) — coverage selection, stubbing policy, reliability, and release gates.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — browser, page, command, event, and evidence boundaries.
+- [`docs/TEST_STRATEGY.md`](docs/TEST_STRATEGY.md) — coverage selection, stubbing, reliability, and browser policy.
 
-The framework should make an end-to-end failure attributable to a **selector**, **application transition**, **network dependency**, **runner/runtime**, or **test-state** problem with minimal guesswork.
+> [!TIP]
+> Cypress is strongest when tests express observable application contracts and let native retryability do the waiting. Extra abstraction should clarify ownership or enforce policy—not hide the command queue that makes failures debuggable.
