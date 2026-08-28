@@ -1,33 +1,95 @@
 # Architecture
 
-## Cypress boundary
+## Design objective
 
-Cypress already provides command retryability, isolation, network interception, screenshots, and browser lifecycle. Framework code should configure those capabilities rather than reproduce them in generic wrappers.
+The Cypress framework keeps test intent close to Cypress while centralizing only cross-cutting execution policy: validated runtime configuration, a small command/page surface, test isolation, retry settings, and privacy-aware run reporting.
 
-- **Specs** contain behavior and assertions.
-- **Page objects/components** own stable selectors and domain interactions.
-- **Custom commands** are reserved for cross-cutting application intent used broadly across specs.
-- **Node tasks** perform operations that legitimately belong outside the browser process.
-- **Runtime configuration** validates environment values before Cypress starts.
+```mermaid
+flowchart LR
+    T[Cypress specs] --> P[Pages / custom commands]
+    T --> CY[Cypress command queue]
+    CFG[config/runtime.js] --> CC[cypress.config.js]
+    CC --> CY
+    CY --> APP[Target application]
+    CC --> AR[after:run hook]
+    AR --> RR[config/runReporter.js]
+    RR --> M[reports/run-manifest.json]
+```
 
-## Commands
+Custom commands and page objects should model repeated application intent. They should not replace ordinary Cypress commands with a second generic API.
 
-A custom command should earn its global scope. `login`, `visitApp`, and `getByTestId` are small and predictable. Feature-specific behavior generally belongs in a page/component object to avoid turning `cy` into an unbounded utility namespace.
+## Runtime configuration boundary
 
-Sensitive values use `{ log: false }` when typed. This reduces accidental credential exposure in the command log, but secrets should still come from environment/secret management rather than fixture files.
+`config/runtime.js` validates environment-derived policy before Cypress execution.
 
-## Synchronization
+`CYPRESS_BASE_URL` must be an absolute HTTP(S) URL without:
 
-Cypress commands and assertions retry until their timeout. Prefer `.should(...)`, aliases, and `cy.intercept()`/`cy.wait('@alias')` for observable state. Fixed `cy.wait(milliseconds)` is not a synchronization strategy.
+- URL credentials;
+- query strings;
+- fragments.
 
-## Network behavior
+Optional path prefixes remain valid. Command/request/response/page-load budgets must be positive integers. The generated/runtime run ID is passed into Cypress environment state for correlation.
 
-Intercepts may observe real traffic or stub deliberate boundaries. When stubbing, assert request method/path/body semantics so a stub cannot hide client contract drift. Do not mock the critical integration path in every test.
+`config/runtime.selftest.js` verifies these invariants without starting a browser. It is part of `npm run config:check` and runs before the config is loaded by CI.
 
-## State isolation
+## Cypress execution model
 
-`testIsolation` remains enabled. Tests should not depend on local/session storage left by previous tests. Use `cy.session()` only for setup that has an explicit validation function and is safe to restore across tests.
+Cypress command retryability and assertion semantics remain native. The framework does not add arbitrary Promise wrappers or sleeps around Cypress commands.
 
-## Node tasks
+`testIsolation: true` is the default. Each test should establish the application state it depends on rather than relying on execution order or state leaked from a prior spec/test.
 
-Use `cy.task()` for filesystem, database, or other Node-side operations that cannot run in the browser. Tasks should have narrow contracts, deterministic return values, and safe logging. Shell execution is not a general test abstraction.
+Retries are enabled only in run mode and capped. A retry-only pass remains a reliability signal.
+
+## Selector and page model
+
+Prefer stable test IDs and user-facing semantic selectors. Pages expose feature-level interactions; custom commands are reserved for truly shared operations such as authenticated setup or test-ID lookup.
+
+Do not create generic `click(selector)`/`type(selector)` wrappers that hide Cypress's own retryability and error context.
+
+## Run reporter
+
+`config/runReporter.js` consumes Cypress's supported `after:run` results object and builds an atomic run manifest containing:
+
+- schema version and run ID;
+- sanitized base URL;
+- browser/OS/Cypress version;
+- aggregate test totals/duration;
+- per-spec stats;
+- per-test final state, attempt count, and bounded failure message.
+
+The manifest is written to a temporary file and atomically renamed. The reporter can be tested independently from Cypress with `config/runReporter.selftest.js`.
+
+## Diagnostic privacy
+
+The run reporter sanitizes data **before persistence**:
+
+- base URL user-info/query/fragment are removed;
+- URLs embedded in error text are reduced to origin/path;
+- common bearer/basic values are redacted;
+- common token/password/secret assignments are redacted;
+- failure text is bounded.
+
+Screenshots/video remain native Cypress evidence and can contain application-visible content. Use synthetic data and controlled accounts; structured run-manifest redaction does not sanitize pixels or arbitrary DOM content.
+
+## Node-event boundary
+
+`setupNodeEvents` is the correct boundary for filesystem/reporting behavior. Browser-side spec code should not own CI artifact serialization. Node tasks should remain allowlisted and narrow so privileged filesystem/process access does not leak into test code unnecessarily.
+
+## CI evidence
+
+CI runs configuration/reporter self-tests, verifies Cypress installation, executes the Chrome gate, and publishes reports/screenshots/video when present.
+
+The zero-browser self-tests classify framework policy failures separately from browser/application failures, making the pipeline easier to diagnose.
+
+## Extension rules
+
+New framework behavior should:
+
+1. validate runtime input before browser startup;
+2. preserve native Cypress command/assertion semantics;
+3. keep custom commands/pages feature-oriented and small;
+4. maintain test isolation and explicit state setup;
+5. use Node events for filesystem/reporting concerns;
+6. sanitize and bound structured diagnostics before persistence;
+7. add a zero-browser self-test when reporter/config logic is independently testable;
+8. treat retry-only passes as reliability signals rather than expected behavior.
