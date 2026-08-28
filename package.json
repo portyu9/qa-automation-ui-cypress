@@ -14,7 +14,7 @@
     "test:login": "cypress run --spec cypress/e2e/login.cy.js",
     "cypress:open": "cypress open",
     "cypress:verify": "cypress verify",
-    "config:check": "node config/runtime.selftest.js && node config/runReporter.selftest.js && node -e \"require('./cypress.config.js')\""
+    "config:check": "node config/runtime.selftest.js && node config/runReporter.selftest.js && node config/cypressConfig.selftest.js"
   },
   "license": "MIT",
   "devDependencies": {
