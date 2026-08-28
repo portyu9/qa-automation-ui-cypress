@@ -34,9 +34,11 @@ A Cypress end-to-end framework for browser workflows with page abstractions, sta
 Cypress 15 requires a modern Node runtime; this project requires Node 22+.
 
 ```bash
-npm install
+npm ci
 npm run cypress:verify
 ```
+
+`package-lock.json` is committed and CI uses `npm ci` so dependency resolution is reproducible. Use `npm install` only when intentionally changing dependencies, review the resulting lockfile diff, and commit the manifest and lockfile together.
 
 ## Configuration
 
@@ -93,6 +95,6 @@ Use `cy.intercept()` deliberately. A stub should validate the outbound request c
 
 ## CI
 
-GitHub Actions runs Node 22, validates configuration, verifies the Cypress binary, executes Chrome, and uploads failure artifacts with bounded retention. The workflow cancels superseded runs on the same branch to avoid wasting browser capacity.
+GitHub Actions runs Node 22, installs the committed lockfile with `npm ci`, validates configuration, verifies the Cypress binary, executes Chrome, and uploads failure artifacts with bounded retention. The workflow cancels superseded runs on the same branch to avoid wasting browser capacity.
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/TEST_STRATEGY.md`](docs/TEST_STRATEGY.md) for framework boundaries and reliability policy.
