@@ -6,9 +6,10 @@ beforeEach(() => {
 
 afterEach(function () {
   if (this.currentTest?.state === 'failed') {
+    const runId = Cypress.expose('runId');
     cy.task(
       'log',
-      `failed: ${Cypress.currentTest.titlePath.join(' > ')} | runId=${Cypress.env('runId')}`,
+      `failed: ${Cypress.currentTest.titlePath.join(' > ')} | runId=${runId}`,
       { log: false }
     );
   }
