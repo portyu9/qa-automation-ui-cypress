@@ -4,16 +4,15 @@
 [![Extended](https://github.com/portyu9/qa-automation-ui-cypress/actions/workflows/extended.yml/badge.svg)](https://github.com/portyu9/qa-automation-ui-cypress/actions/workflows/extended.yml)
 [![Security](https://github.com/portyu9/qa-automation-ui-cypress/actions/workflows/security.yml/badge.svg)](https://github.com/portyu9/qa-automation-ui-cypress/actions/workflows/security.yml)
 
-[![Node.js](https://img.shields.io/badge/Node.js-22%2B-339933)](https://nodejs.org/)
-[![JavaScript](https://img.shields.io/badge/JavaScript-ES2022-F7DF1E)](https://developer.mozilla.org/docs/Web/JavaScript)
-[![Cypress](https://img.shields.io/badge/Cypress-15.21.1-17202C)](https://www.cypress.io/)
-[![Chrome](https://img.shields.io/badge/Chrome-primary%20browser-4285F4)](https://www.google.com/chrome/)
-[![Firefox](https://img.shields.io/badge/Firefox-extended%20browser-FF7139)](https://www.mozilla.org/firefox/)
-[![Electron](https://img.shields.io/badge/Electron-supported-47848F)](https://www.electronjs.org/)
-[![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-CI-2088FF)](https://github.com/features/actions)
-[![Trivy](https://img.shields.io/badge/Trivy-security%20scan-1904DA)](https://trivy.dev/)
-[![License](https://img.shields.io/badge/License-MIT-2EA44F)](LICENSE)
-[![Security Policy](https://img.shields.io/badge/Security-Policy-6E7781)](.github/SECURITY.md)
+[![Node.js](https://img.shields.io/badge/Node.js-runtime-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![JavaScript](https://img.shields.io/badge/JavaScript-language-F7DF1E?logo=javascript&logoColor=black)](https://developer.mozilla.org/docs/Web/JavaScript)
+[![Cypress](https://img.shields.io/badge/Cypress-browser%20testing-17202C?logo=cypress&logoColor=white)](https://www.cypress.io/)
+[![Chrome](https://img.shields.io/badge/Chrome-primary%20browser-4285F4?logo=googlechrome&logoColor=white)](https://www.google.com/chrome/)
+[![Firefox](https://img.shields.io/badge/Firefox-extended%20browser-FF7139?logo=firefoxbrowser&logoColor=white)](https://www.mozilla.org/firefox/)
+[![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-CI-2088FF?logo=githubactions&logoColor=white)](https://github.com/features/actions)
+[![Trivy](https://img.shields.io/badge/Trivy-security-1904DA?logo=trivy&logoColor=white)](https://trivy.dev/)
+[![License](https://img.shields.io/badge/License-MIT-2EA44F?logo=opensourceinitiative&logoColor=white)](LICENSE)
+[![Security Policy](https://img.shields.io/badge/Security-Policy-6E7781?logo=github&logoColor=white)](.github/SECURITY.md)
 
 A Cypress browser quality-engineering framework built around native command retryability, explicit test isolation, stable selector contracts, feature-oriented page modules, validated runtime configuration, structured run diagnostics, and reproducible CI. Framework code extends Cypress only where it enforces a durable policy; it does not replace Cypress's command queue with another synchronization or abstraction layer.
 
@@ -42,6 +41,18 @@ flowchart LR
     C --> EV
     F --> EV
     SEC --> EV
+
+    classDef entry fill:#ddf4ff,stroke:#0969da,color:#24292f,stroke-width:1.5px;
+    classDef core fill:#f6f8fa,stroke:#57606a,color:#24292f,stroke-width:1.5px;
+    classDef gate fill:#fbefff,stroke:#8250df,color:#24292f,stroke-width:1.5px;
+    classDef evidence fill:#dafbe1,stroke:#1a7f37,color:#24292f,stroke-width:1.5px;
+    classDef security fill:#ffebe9,stroke:#cf222e,color:#24292f,stroke-width:1.5px;
+    class CHANGE entry;
+    class CFG core;
+    class CH,EXT,C,F gate;
+    class SEC security;
+    class EV evidence;
+    linkStyle default stroke:#57606a,stroke-width:1.4px;
 ```
 
 ## Engineering invariants
@@ -73,6 +84,14 @@ flowchart TD
     MAN --> OBS[CI evidence]
     SS --> OBS
     VID --> OBS
+
+    classDef entry fill:#ddf4ff,stroke:#0969da,color:#24292f,stroke-width:1.5px;
+    classDef core fill:#f6f8fa,stroke:#57606a,color:#24292f,stroke-width:1.5px;
+    classDef evidence fill:#dafbe1,stroke:#1a7f37,color:#24292f,stroke-width:1.5px;
+    class CYP entry;
+    class SPEC,PAGE,CMD,RETRY,EVENT,MAN,SS,VID core;
+    class OBS evidence;
+    linkStyle default stroke:#57606a,stroke-width:1.4px;
 ```
 
 ## Repository map
@@ -303,6 +322,18 @@ flowchart TD
     CH --> ART[Structured + visual evidence]
     C --> ART
     F --> ART
+
+    classDef entry fill:#ddf4ff,stroke:#0969da,color:#24292f,stroke-width:1.5px;
+    classDef core fill:#f6f8fa,stroke:#57606a,color:#24292f,stroke-width:1.5px;
+    classDef gate fill:#fbefff,stroke:#8250df,color:#24292f,stroke-width:1.5px;
+    classDef evidence fill:#dafbe1,stroke:#1a7f37,color:#24292f,stroke-width:1.5px;
+    classDef security fill:#ffebe9,stroke:#cf222e,color:#24292f,stroke-width:1.5px;
+    class PR,BCHANGE entry;
+    class INSTALL,CFG,VERIFY core;
+    class CH,EXT,C,F gate;
+    class SEC security;
+    class ART evidence;
+    linkStyle default stroke:#57606a,stroke-width:1.4px;
 ```
 
 ## Failure triage
