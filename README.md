@@ -31,7 +31,7 @@ A Cypress end-to-end framework for browser workflows with page abstractions, sta
 
 ## Prerequisites
 
-Cypress 15 requires a modern Node runtime; this project declares Node 20+.
+Cypress 15 requires a modern Node runtime; this project requires Node 22+.
 
 ```bash
 npm install
