@@ -33,12 +33,13 @@ jobs:
       - run: npm run cypress:verify
       - name: Run Chrome E2E gate
         run: npm run test:chrome
-      - name: Upload Cypress failure evidence
+      - name: Upload Cypress evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: cypress-evidence
           path: |
+            reports/
             cypress/screenshots/
             cypress/videos/
             cypress/downloads/
