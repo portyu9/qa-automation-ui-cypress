@@ -1,5 +1,10 @@
-node_modules
-dist
-cypress/videos
-cypress/screenshots
-report
+node_modules/
+cypress/screenshots/
+cypress/videos/
+cypress/downloads/
+reports/
+.env
+*.log
+.DS_Store
+.idea/
+.vscode/

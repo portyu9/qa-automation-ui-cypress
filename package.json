@@ -1,22 +1,22 @@
 {
   "name": "qa-ui-cypress",
   "version": "1.0.0",
-  "description": "UI end-to-end testing framework using Cypress and Page Objects",
-  "main": "index.js",
+  "private": true,
+  "description": "Cypress end-to-end test framework with page abstractions, validated runtime configuration, and CI diagnostics.",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "test": "cypress run",
+    "test:chrome": "cypress run --browser chrome",
+    "test:electron": "cypress run --browser electron",
+    "test:login": "cypress run --spec cypress/e2e/login.cy.js",
     "cypress:open": "cypress open",
-    "cypress:run": "cypress run"
+    "cypress:verify": "cypress verify",
+    "config:check": "node -e \"require('./cypress.config.js')\""
   },
-  "keywords": [
-    "cypress",
-    "e2e",
-    "page object",
-    "testing"
-  ],
-  "author": "",
   "license": "MIT",
   "devDependencies": {
-    "cypress": "^13.7.0"
+    "cypress": "^15.21.1"
   }
 }

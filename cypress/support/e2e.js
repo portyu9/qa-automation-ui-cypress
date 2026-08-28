@@ -1,10 +1,15 @@
-// ***********************************************************
-// This example support/e2e.js is processed and
-// loaded automatically before your test files.
-//
-// Use this file to import custom commands so that they are available
-// globally across all spec files.  See the documentation for more
-// details: https://docs.cypress.io/guides/core-concepts/writing-and-organizing-tests.
-// ***********************************************************
-
 import './commands';
+
+beforeEach(() => {
+  cy.task('log', `starting: ${Cypress.currentTest.titlePath.join(' > ')}`, { log: false });
+});
+
+afterEach(function () {
+  if (this.currentTest?.state === 'failed') {
+    cy.task(
+      'log',
+      `failed: ${Cypress.currentTest.titlePath.join(' > ')} | runId=${Cypress.env('runId')}`,
+      { log: false }
+    );
+  }
+});

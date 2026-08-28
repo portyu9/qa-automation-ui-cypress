@@ -1,21 +1,36 @@
 const { defineConfig } = require('cypress');
+const { loadRuntime } = require('./config/runtime');
 
-/**
- * Cypress configuration for the UI test project.
- *
- * The baseUrl points at the Sauce Demo site by default.  You can override
- * this via environment variables or by editing this file.  Test files live
- * under cypress/e2e and follow the *.cy.js naming convention.
- */
+const runtime = loadRuntime();
+
 module.exports = defineConfig({
+  viewportWidth: 1440,
+  viewportHeight: 1000,
+  defaultCommandTimeout: runtime.commandTimeout,
+  requestTimeout: runtime.requestTimeout,
+  responseTimeout: runtime.responseTimeout,
+  pageLoadTimeout: runtime.pageLoadTimeout,
+  screenshotOnRunFailure: true,
+  trashAssetsBeforeRuns: true,
+  retries: {
+    runMode: 2,
+    openMode: 0,
+  },
   e2e: {
-    baseUrl: 'https://www.saucedemo.com',
+    baseUrl: runtime.baseUrl,
     specPattern: 'cypress/e2e/**/*.cy.js',
     supportFile: 'cypress/support/e2e.js',
-        pageLoadTimeout: 120000,
-    
+    testIsolation: true,
     setupNodeEvents(on, config) {
-      // implement node event listeners here if needed
-    }
-  }
+      on('task', {
+        log(message) {
+          console.log(`[cypress:${runtime.runId}] ${String(message)}`);
+          return null;
+        },
+      });
+
+      config.env.runId = runtime.runId;
+      return config;
+    },
+  },
 });

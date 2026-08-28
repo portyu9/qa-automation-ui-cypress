@@ -1,27 +1,44 @@
-name: Cypress E2E Tests
+name: ci
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cypress-ui-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CYPRESS_BASE_URL: https://www.saucedemo.com
+  TEST_RUN_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}
 
 jobs:
-  cypress-run:
+  e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '18'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Run Cypress tests
-        uses: cypress-io/github-action@v6
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm run config:check
+      - run: npm run cypress:verify
+      - name: Run Chrome E2E gate
+        run: npm run test:chrome
+      - name: Upload Cypress failure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          command: npm run test
+          name: cypress-evidence
+          path: |
+            cypress/screenshots/
+            cypress/videos/
+            cypress/downloads/
+          if-no-files-found: ignore
+          retention-days: 14
