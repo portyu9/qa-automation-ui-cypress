@@ -19,11 +19,20 @@ const manifest = buildRunManifest(
     runs: [
       {
         spec: { relative: 'cypress/e2e/login.cy.js' },
-        stats: { tests: 2, failures: 1 },
+        stats: {
+          suites: 1,
+          tests: 2,
+          passes: 1,
+          pending: 0,
+          skipped: 0,
+          failures: 1,
+          wallClockDuration: 1234,
+          internalObjectThatMustNotPersist: { token: 'secret' },
+        },
         tests: [
           { title: ['login', 'passes'], state: 'passed', attempts: [{ state: 'passed' }] },
           {
-            title: ['login', 'fails'],
+            title: ['login', 'password=secret', 'x'.repeat(600)],
             state: 'failed',
             attempts: [
               {
@@ -56,6 +65,18 @@ assert.deepEqual(manifest.totals, {
   skipped: 0,
   durationMs: 1234,
 });
+assert.deepEqual(manifest.runs[0].stats, {
+  suites: 1,
+  tests: 2,
+  passes: 1,
+  pending: 0,
+  skipped: 0,
+  failures: 1,
+  durationMs: 1234,
+});
+assert.equal('internalObjectThatMustNotPersist' in manifest.runs[0].stats, false);
+assert.equal(manifest.runs[0].tests[1].title.includes('secret'), false);
+assert.ok(manifest.runs[0].tests[1].title.length <= 512);
 assert.equal(manifest.runs[0].tests[1].error.includes('abc123'), false);
 assert.equal(manifest.runs[0].tests[1].error.includes('?token=secret'), false);
 assert.equal(manifest.runs[0].tests[1].error.includes('<redacted>'), true);
