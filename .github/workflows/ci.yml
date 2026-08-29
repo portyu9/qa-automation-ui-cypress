@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  CYPRESS_BASE_URL: https://www.saucedemo.com
+  CYPRESS_BASE_URL: http://127.0.0.1:3100
   TEST_RUN_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}
 
 jobs:
@@ -31,7 +31,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run config:check
       - run: npm run cypress:verify
-      - name: Run Chrome E2E gate
+      - name: Run Chrome E2E gate against repository-owned fixture
         run: npm run test:chrome
       - name: Publish CI observability summary
         if: always()
@@ -45,7 +45,7 @@ jobs:
             schemaVersion: 1,
             framework: 'cypress',
             runId: process.env.TEST_RUN_ID,
-            dimension: { node: '22', browser: 'chrome' },
+            dimension: { node: '22', browser: 'chrome', target: 'local-fixture' },
             status: process.env.JOB_STATUS,
             sha: process.env.GITHUB_SHA,
             ref: process.env.GITHUB_REF,
@@ -57,6 +57,7 @@ jobs:
             echo
             echo "- Run ID: \`${TEST_RUN_ID}\`"
             echo "- Job status: \`${JOB_STATUS}\`"
+            echo '- Target: repository-owned loopback fixture'
             echo '- Evidence: run manifest + screenshots/video + CI observability envelope'
           } | tee reports/ci-summary.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload Cypress evidence
