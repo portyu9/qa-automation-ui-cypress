@@ -14,3 +14,17 @@ Cypress.Commands.add('visitApp', (path = '/') => {
     retryOnStatusCodeFailure: false,
   });
 });
+
+Cypress.Commands.add('stubJson', (method, url, body, alias, overrides = {}) => {
+  if (!alias) throw new Error('stubJson requires an alias');
+
+  cy.intercept(method, url, {
+    statusCode: 200,
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    },
+    body,
+    ...overrides,
+  }).as(alias);
+});
