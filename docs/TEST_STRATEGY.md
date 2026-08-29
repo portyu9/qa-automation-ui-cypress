@@ -2,86 +2,110 @@
 
 ## Purpose
 
-The Cypress layer proves browser-visible workflows while keeping framework policy independently testable. Configuration and reporting logic should fail in fast Node self-tests before a browser is launched; browser specs then focus on application behavior.
+The Cypress layer proves browser-visible workflows while keeping framework policy independently testable and required CI deterministic. Configuration/reporting defects should fail before browser startup; browser specs should then test observable application contracts against a repository-owned target unless an external environment is selected explicitly.
 
 ## Gate layers
 
-| Layer | Runner | Browser? | Primary concern |
-| --- | --- | ---: | --- |
-| Runtime contract | Node self-test | No | URL and timeout validation |
-| Reporter contract | Node self-test | No | Manifest shape, redaction, bounds |
-| Browser gate | Cypress Chrome | Yes | Critical UI behavior, selectors, isolation |
-| Alternate browser | Cypress project/browser selection | Yes | Risk-based compatibility |
+| Layer | Runner | Target | Primary concern |
+| --- | --- | --- | --- |
+| Runtime contract | Node self-test | None | URL/timeout validation |
+| Reporter contract | Node self-test | None | Manifest mapping, redaction, bounds |
+| Primary browser | Cypress Chrome | Local fixture | Critical navigation/authentication behavior |
+| Alternate browser | Cypress Firefox | Local fixture | Compatibility |
+| Controlled dependency | Cypress + `cy.intercept()` | Local/selected target | Explicit dependency condition |
+| Environment integration | Cypress | Explicit `CYPRESS_BASE_URL` | Deployed-system contract |
+
+## Deterministic default target
+
+Required browser CI uses `http://127.0.0.1:3100`. `cypress.config.js` starts `fixture/server.js` from `setupNodeEvents` and closes it from `after:run`.
+
+This contract deliberately excludes:
+
+- public DNS/TLS availability;
+- third-party demonstration-site changes;
+- external accounts;
+- vendor rate limits;
+- public-network latency.
+
+Those concerns belong to an explicit deployed-environment layer, not framework correctness.
 
 ## Configuration-negative testing
 
-The runtime self-test verifies rejection of:
-
-- non-absolute base URLs;
-- URL credentials;
-- query strings/fragments;
-- non-positive command-timeout budgets.
-
-`npm run config:check` executes the runtime contract, reporter contract, and then loads the Cypress config. This keeps framework-policy failures distinct from Cypress binary/browser failures.
+Runtime self-tests reject relative URLs, URL credentials, query/fragment-bearing targets, and non-positive timeout budgets. `npm run config:check` also verifies run-reporting behavior and config loading before Cypress binary/browser execution.
 
 ## Browser-test design
 
-Place assertions at the lowest browser surface capable of proving the user-visible behavior. Avoid duplicating large business-rule matrices already covered by API/unit tests.
+Place assertions at the lowest browser surface that proves the user-visible requirement. Avoid duplicating broad business-rule matrices that are better suited to unit/API layers.
 
-Prefer selectors with stable ownership:
+Prefer selectors in this order:
 
-1. dedicated test IDs;
+1. stable application-owned test IDs;
 2. accessibility/user semantics;
 3. stable structural selectors only when no stronger contract exists.
 
-Page objects may compose feature interactions but should not obscure Cypress's native command queue or assertion retries.
+Page modules compose feature interactions but must not hide Cypress command queue/retry semantics.
+
+## Authentication coverage
+
+The default browser suite covers both acceptance and rejection:
+
+- valid credentials transition to `/inventory.html` and expose inventory content;
+- invalid credentials remain on `/` and expose the stable error contract.
+
+Negative behavior is part of the gate because accepting invalid input can be as significant as rejecting valid input.
 
 ## Synchronization policy
 
-Use Cypress retryability and assertions around observable state. Do not use arbitrary `cy.wait(number)` delays for application readiness.
+Use Cypress query/assertion retryability and observable state. A fixed `cy.wait(number)` is not application readiness.
 
-Network aliases/intercepts may be used when the request itself is part of the state transition. They should not become a blanket replacement for asserting visible application state.
+Use request aliases/intercepts when the request is part of the state transition. Still assert the resulting application state so the test proves user-visible behavior rather than only transport occurrence.
 
 ## Isolation policy
 
-`testIsolation` remains enabled. Each test owns the state it mutates and must not require a prior test to authenticate, seed data, or navigate.
+`testIsolation` remains enabled. Every test establishes the state it needs. Immutable fixture files are inputs, not shared mutable application state.
 
-Fixtures are immutable input examples, not shared mutable application state. Stateful flows should create/reset data through controlled setup mechanisms.
+Do not rely on test order, a predecessor login, or a browser session left behind by another test.
 
 ## Retry policy
 
-Run-mode retries are capped; open-mode retries are disabled for interactive debugging. A test that succeeds only on retry is still a defect signal.
+Run-mode retries are capped. A retry-only pass is a reliability defect signal and should be classified. Retry count must not be increased to compensate for weak selectors, public-network variability, or missing readiness conditions.
 
-Do not increase retry count to compensate for unstable selectors or synchronization. Fix the ownership/readiness contract instead.
+## External environment policy
+
+A deployed environment is selected by setting `CYPRESS_BASE_URL` to a non-default safe HTTP(S) URL. Such execution should be classified separately because failures may belong to deployment state, environment data, networking, or downstream dependencies.
+
+Do not replace the deterministic required gate with a public endpoint merely because the public endpoint appears more end-to-end.
 
 ## Evidence strategy
 
-On failure, inspect:
+Inspect failures in this order:
 
 1. Cypress assertion/command log;
-2. `reports/run-manifest.json` for browser/runtime totals, attempt count, and sanitized bounded error text;
+2. `reports/run-manifest.json` for run/browser/attempt metadata and sanitized bounded error text;
 3. screenshot for rendered state;
-4. video for sequence/context when enabled;
-5. CI/browser installation logs for infrastructure failures.
+4. video for sequence/context;
+5. CI/bootstrap logs for runner/browser/fixture infrastructure.
 
-The manifest removes URL credentials/query/fragment and redacts common credential/token assignments. Screenshots/video are not generally redacted and require synthetic data.
+Structured evidence removes URL credentials/query/fragment and redacts common credential/token assignments. Screenshots/video can still contain visible data and must use synthetic/controlled inputs.
 
 ## Failure classification
 
-| Failure class | Interpretation |
+| Failure class | First interpretation |
 | --- | --- |
-| Runtime self-test | Framework configuration policy regression |
-| Reporter self-test | Evidence/privacy contract regression |
+| Runtime self-test | Configuration-policy regression |
+| Reporter self-test | Evidence/privacy regression |
+| Fixture startup/connection | Repository fixture lifecycle/port ownership |
 | Cypress verify/startup | Runner/browser infrastructure |
-| Selector timeout | UI ownership/state/synchronization problem |
-| Assertion | Application-visible contract mismatch |
-| Retry-only pass | Reliability/flakiness signal |
+| Navigation failure | HTTP/page-load/application route boundary |
+| Selector timeout | UI ownership/readiness |
+| Authentication negative mismatch | Rejection/error semantics |
+| Browser-specific failure | Compatibility |
+| Retry-only pass | Reliability/flakiness |
+| Explicit external target failure | Environment/integration first, framework second |
 
 ## Browser coverage
 
-Chrome is the primary CI browser. Electron or other available browsers are useful for targeted compatibility checks, not automatic duplication of every low-risk case.
-
-Expand the matrix only for known compatibility risk, release criteria, or browser-specific behavior.
+Chrome is the primary gate. Firefox is the extended compatibility signal. Add more browser dimensions only for known compatibility risk or release criteria; do not multiply low-risk cases mechanically.
 
 ## Exit criteria
 
@@ -89,8 +113,10 @@ A UI/framework change is ready when:
 
 - runtime and reporter self-tests pass;
 - Cypress configuration loads cleanly;
-- the Chrome browser gate passes;
-- no fixed wait or hidden assertion retry is added;
-- changed selectors remain stable/owned;
-- generated structured evidence remains privacy-aware and bounded;
-- changes to isolation/retry/evidence policy are reflected in documentation.
+- the repository fixture starts and stops cleanly;
+- Chrome passes the deterministic browser contract;
+- Firefox passes when the extended workflow applies;
+- no fixed wait or hidden retry workaround is introduced;
+- changed selectors remain stable and application-owned;
+- structured evidence remains privacy-aware and bounded;
+- any external-target behavior is explicitly classified and documented.
