@@ -1,9 +1,10 @@
 'use strict';
 
 const DEFAULT_FIXTURE_URL = 'http://127.0.0.1:3100';
+const SAFE_RUN_ID = /^[A-Za-z0-9._:-]{1,128}$/;
 
 function absoluteHttpUrl(name, fallback) {
-  const raw = process.env[name] || fallback;
+  const raw = String(process.env[name] || fallback).trim();
   let parsed;
   try {
     parsed = new URL(raw);
@@ -32,6 +33,17 @@ function positiveInteger(name, fallback) {
   return value;
 }
 
+function runId() {
+  const value = String(process.env.TEST_RUN_ID || '').trim();
+  if (!value) return `local-${Date.now()}`;
+  if (!SAFE_RUN_ID.test(value)) {
+    throw new Error(
+      'TEST_RUN_ID must be 1-128 ASCII letters, digits, dots, underscores, colons, or hyphens'
+    );
+  }
+  return value;
+}
+
 function loadRuntime() {
   return Object.freeze({
     baseUrl: absoluteHttpUrl('CYPRESS_BASE_URL', DEFAULT_FIXTURE_URL),
@@ -39,7 +51,7 @@ function loadRuntime() {
     requestTimeout: positiveInteger('CYPRESS_REQUEST_TIMEOUT_MS', 10_000),
     responseTimeout: positiveInteger('CYPRESS_RESPONSE_TIMEOUT_MS', 30_000),
     pageLoadTimeout: positiveInteger('CYPRESS_PAGE_LOAD_TIMEOUT_MS', 60_000),
-    runId: (process.env.TEST_RUN_ID || `local-${Date.now()}`).trim(),
+    runId: runId(),
   });
 }
 
