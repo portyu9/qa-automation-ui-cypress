@@ -15,30 +15,33 @@
 [![License](https://img.shields.io/badge/License-MIT-2EA44F?logo=opensourceinitiative&logoColor=white)](LICENSE)
 [![Security Policy](https://img.shields.io/badge/Security-Policy-24292F?logo=github&logoColor=white)](.github/SECURITY.md)
 
-A Cypress browser quality-engineering framework built around native command retryability, explicit test isolation, stable `data-test` contracts, feature-oriented page modules, validated runtime configuration, deterministic application ownership, privacy-aware run diagnostics, and reproducible CI.
+A Cypress browser quality-engineering framework centered on **native command retryability, explicit test isolation, stable application-owned selectors, deterministic target ownership, bounded evidence, and reproducible CI**. Page modules express feature intent without hiding Cypress semantics behind a generic wrapper layer.
 
 > [!IMPORTANT]
-> Required CI does not depend on a public demonstration site. The default target is a repository-owned loopback application fixture. A real deployed environment can still be selected explicitly through `CYPRESS_BASE_URL` when integration coverage is intended.
+> Required CI uses a repository-owned loopback application at `http://127.0.0.1:3100`. A deployed environment is selected explicitly with `CYPRESS_BASE_URL`; public-site availability is never part of the framework's definition of health.
+
+**Read by intent:** [capabilities](#capability-map) · [architecture](#architecture) · [quick start](#quick-start) · [synchronization](#synchronization-model) · [network policy](#network-stubbing-policy) · [dependencies](#dependency-maintenance) · [triage](#failure-triage)
 
 ## Capability map
 
 | Plane | What it proves | Execution | Evidence |
 | --- | --- | --- | --- |
-| Runtime contract | Configuration and reporter mapping | Node self-tests | Process exit + assertions |
-| Primary browser | Authentication acceptance/rejection and page transitions | Chrome / Node 22 | Run manifest, screenshots, video |
-| Extended browser | Browser compatibility | Chrome + Firefox | Independent per-browser evidence |
-| Controlled dependency | UI behavior under deterministic network conditions | `cy.intercept()` when justified | Native command/assertion output |
-| Security | Dependency/configuration exposure | Trivy filesystem scan | JSON findings + Markdown summary |
+| Runtime contract | Configuration/reporter policy | Node self-tests | Assertions + exit status |
+| Primary browser | Authentication acceptance/rejection and page transitions | Chrome + local fixture | Run manifest, screenshots, video |
+| Extended browser | Compatibility | Chrome + Firefox | Independent per-browser evidence |
+| Controlled dependency | UI behavior under owned network conditions | `cy.intercept()` when justified | Native command/assertion output |
+| Security | Dependency/configuration exposure | Trivy filesystem scan | JSON + Markdown findings |
 | Documentation | README/workflow/governance consistency | Repository-local validator | Actions status |
-| Observability | Run/browser/gate identity | Structured envelope + manifest | `reports/` + Actions summary |
+
+## Architecture
 
 ```mermaid
 flowchart LR
     CHANGE[Change] --> CFG[Runtime self-checks]
     CFG --> CYP[Cypress runner]
     CYP --> FIX[Repository fixture]
-    FIX --> AUTH[Authentication page]
-    AUTH --> INV[Inventory page]
+    FIX --> AUTH[Authentication]
+    AUTH --> INV[Inventory]
     CYP --> PAGE[Page modules]
     CYP --> EV[Manifest · Screenshot · Video]
     CHANGE --> EXT[Chrome + Firefox]
@@ -60,57 +63,38 @@ flowchart LR
 
 | Concern | Framework contract |
 | --- | --- |
-| Default target | Browser gates use `http://127.0.0.1:3100`, owned by the repository. |
-| Fixture lifecycle | `setupNodeEvents` starts the local server only for the default target; `after:run` closes it. |
-| External integration | A non-default `CYPRESS_BASE_URL` is explicit and does not redefine ordinary CI correctness. |
-| Selectors | Stable `data-test` hooks are the primary UI test interface. |
-| Synchronization | Cypress retryability and observable state replace fixed sleeps. |
-| Isolation | `testIsolation: true`; no test depends on predecessor state. |
-| Sensitive input | Password clear/type operations suppress Cypress command logging. |
-| Negative behavior | Invalid credentials are a required executable contract. |
-| Retries | Run-mode retries are bounded diagnostic policy, not the definition of correctness. |
-| Reporting | `after:run` writes an atomic privacy-aware run manifest. |
-| Reproducibility | Node 22+, committed lockfile, `npm ci`, Cypress binary verification. |
-| Browser policy | Chrome is the primary gate; Firefox is the independent compatibility signal. |
+| Default target | Browser gates use repository-owned `http://127.0.0.1:3100`. |
+| Fixture lifecycle | `setupNodeEvents` starts the fixture for the default target; `after:run` closes it. |
+| External integration | Non-default `CYPRESS_BASE_URL` is explicit and separately attributable. |
+| Selectors | Stable `data-test` hooks are the primary automation interface. |
+| Synchronization | Cypress retryability + observable state replace elapsed-time sleeps. |
+| Isolation | `testIsolation: true`; predecessor state is never a test prerequisite. |
+| Sensitive input | Password operations suppress Cypress command logging. |
+| Negative behavior | Rejection/error semantics are first-class executable contracts. |
+| Retries | Bounded run-mode retries are diagnostics, not the definition of correctness. |
+| Evidence | `after:run` writes an atomic privacy-aware run manifest. |
+| Compatibility | Chrome is primary; Firefox is an independent risk signal. |
 
-## Tool ownership model
+## Boundary decision guide
 
-| Tool / technology | Native responsibility | Framework responsibility |
+| Question | Preferred surface | Reason |
 | --- | --- | --- |
-| Cypress | Command queue, browser control, retryability, assertions, hooks, screenshots/video, test isolation | Runtime policy, page modules, fixture lifecycle, browser matrix, evidence contract |
-| Node HTTP | Loopback request handling | Deterministic authentication/inventory fixture only |
-| `cy.visit()` | Navigation and page-load/status semantics | Use without weakening native failure behavior |
-| `data-test` | Stable application test hooks | Preferred locator contract |
-| `cy.intercept()` | Request observation/stubbing | Controlled dependency scenarios, not blanket replacement of integration |
-| Chrome / Firefox | Browser implementation | Primary-vs-extended execution policy |
-| GitHub Actions | Job scheduling/artifact transport | CI separation, run correlation, retained evidence |
-| Trivy | Supported vulnerability/misconfiguration analysis | HIGH/CRITICAL remediation gate |
+| UI rendering/navigation/input? | Cypress browser test | Browser semantics are material |
+| Request-driven UI readiness? | Alias request + assert resulting UI | Synchronize to causal events |
+| Controlled dependency failure? | `cy.intercept()` | Own the exact dependency condition |
+| Setup not under test? | API/state boundary | Avoid expensive UI setup |
+| Browser compatibility? | Extended matrix | Keep compatibility independently attributable |
+| Real deployment behavior? | Explicit `CYPRESS_BASE_URL` | Separate environment from framework correctness |
 
 ## Repository map
 
 ```text
 .
-├── config/
-│   ├── runtime.js
-│   ├── runtime.selftest.js
-│   ├── runReporter.js
-│   └── runReporter.selftest.js
-├── fixture/
-│   └── server.js
-├── cypress/
-│   ├── e2e/
-│   ├── fixtures/
-│   ├── pages/
-│   └── support/
-├── docs/
-│   ├── ARCHITECTURE.md
-│   └── TEST_STRATEGY.md
-├── .github/
-│   ├── CODEOWNERS
-│   ├── pull_request_template.md
-│   ├── SECURITY.md
-│   ├── scripts/validate_readme.py
-│   └── workflows/
+├── config/{runtime.js,runtime.selftest.js,runReporter.js,runReporter.selftest.js}
+├── fixture/server.js
+├── cypress/{e2e,fixtures,pages,support}/
+├── docs/{ARCHITECTURE.md,TEST_STRATEGY.md}
+├── .github/workflows/{ci,docs,extended,security}.yml
 ├── CONTRIBUTING.md
 ├── cypress.config.js
 ├── package.json
@@ -127,25 +111,28 @@ npm run test:chrome
 python .github/scripts/validate_readme.py
 ```
 
-No application process has to be started manually for the default browser run. Cypress starts the repository fixture from the Node event lifecycle and closes it after the run.
-
-Run Firefox compatibility:
+No application process is required for the default run; Cypress owns the fixture lifecycle.
 
 ```bash
+# compatibility
 npm run test:firefox
-```
 
-Run against an explicitly chosen environment:
-
-```bash
+# explicit integration target
 CYPRESS_BASE_URL=https://test.example.internal npm run test:chrome
 ```
 
-External targets should be controlled test environments. Public service uptime should not determine whether framework CI is healthy.
+<details>
+<summary><strong>Target classes</strong></summary>
+
+| Target class | Purpose | Required CI? |
+| --- | --- | ---: |
+| Repository fixture | Deterministic framework/browser contract | Yes |
+| `cy.intercept()` condition | Controlled dependency scenario | When behavior requires it |
+| Explicit deployed target | Environment/integration contract | No |
+
+</details>
 
 ## Runtime configuration
-
-`config/runtime.js` validates Node-side execution policy before browser work begins.
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
@@ -154,149 +141,94 @@ External targets should be controlled test environments. Public service uptime s
 | `CYPRESS_REQUEST_TIMEOUT_MS` | Request connection budget | `10000` |
 | `CYPRESS_RESPONSE_TIMEOUT_MS` | Response budget | `30000` |
 | `CYPRESS_PAGE_LOAD_TIMEOUT_MS` | Page-load budget | `60000` |
-| `TEST_RUN_ID` | Run/evidence correlation | generated locally / CI run ID |
+| `TEST_RUN_ID` | Run/evidence correlation | generated / CI run ID |
 
-URLs must be absolute HTTP(S), contain no URL credentials, and contain no query string or fragment. Invalid configuration fails before browser execution.
+URLs must be absolute HTTP(S), contain no credentials, query strings, or fragments, and fail validation before browser execution.
 
 ## Deterministic application fixture
 
-`fixture/server.js` is intentionally small and application-specific. It provides:
+`fixture/server.js` supplies `/health`, `/`, and `/inventory.html` plus deterministic accepted/rejected authentication. It intentionally has no cookies, public APIs, third-party assets, DNS, or TLS dependencies.
 
-- `/health` for fixture readiness;
-- `/` with an authentication form and stable selector hooks;
-- `/inventory.html` as the authenticated destination;
-- deterministic valid and invalid credential behavior;
-- no cookies, external APIs, third-party assets, DNS, or TLS dependencies.
-
-The fixture is not a generic web framework and should not grow into a second application platform. Its purpose is to make browser-framework behavior deterministic: navigation, selectors, input handling, page transitions, negative behavior, screenshots/video, and cross-browser execution.
-
-When `CYPRESS_BASE_URL` differs from the local default, Cypress does not start the fixture. This preserves an explicit path for deployed-environment integration without coupling it to the required build.
+The fixture is **not** a second product or web framework. It exists to prove Cypress-specific behavior—navigation, selectors, input handling, page transitions, negative behavior, artifacts, and browser compatibility—under a controlled contract.
 
 ## Page modules and selectors
 
-Page modules expose application intent rather than renaming Cypress commands. `LoginPage` owns authentication-page selectors/actions; `InventoryPage` owns authenticated inventory state.
-
-Prefer:
+Page modules expose domain actions and owned locators, not renamed Cypress commands.
 
 ```js
 cy.get('[data-test="login-button"]').click();
 cy.get('[data-test="inventory-item"]').should('have.length.at.least', 1);
 ```
 
-Avoid styling and document-depth selectors that change for reasons unrelated to behavior.
+Application-owned semantic/test hooks are more stable than CSS styling classes or DOM-depth selectors because their purpose is explicit.
 
 ## Synchronization model
 
-Use Cypress queries and `.should()` assertions as the primary readiness mechanism. For request-driven behavior, synchronize to the actual request/response and then the UI state.
-
-Do not use fixed numeric sleeps as readiness:
+Use Cypress queries and `.should()` as the primary readiness mechanism. For request-driven behavior, wait on the actual request/response and then assert the resulting UI state.
 
 ```js
-cy.wait(3000); // elapsed time is not a system condition
+cy.wait(3000); // anti-pattern: elapsed time is not a system condition
 ```
 
-A failure should identify which observable state never became true.
+A useful timeout explains **which observable state never became true**.
 
-## Authentication contract
+## Authentication and sensitive input
 
-The browser suite executes both sides of the authentication boundary:
-
-1. valid credentials navigate to `/inventory.html` and expose inventory items;
-2. invalid credentials remain on `/` and expose the stable error `Invalid username or password`.
-
-Passwords are typed with `{ log: false }`. This reduces command-log exposure; it does not make real credentials appropriate test data.
+The suite proves both accepted and rejected credentials. Password typing uses `{ log: false }`; this reduces command-log exposure but does not make real credentials appropriate test data. Deployed credentials belong in secure environment-specific configuration.
 
 ## Network stubbing policy
 
-`cy.intercept()` is appropriate when the test specifically owns a controlled dependency condition, such as an error response, slow response, or outbound request-shape assertion. It should not be used to turn every browser test into a synthetic happy path.
+`cy.intercept()` is appropriate when the test owns a dependency condition—error, latency, request shape, or deterministic response. It should not be used to stub away every integration and create a browser suite that can only prove its own mocks.
 
-Keep three scopes distinct:
+## Evidence and CI
 
-- repository fixture: deterministic browser/framework contract;
-- intercept-driven case: deterministic dependency condition;
-- deployed target: explicit integration/environment contract.
+Cypress-native screenshots/video remain authoritative. `config/runReporter.js` adds a compact run-level manifest, while CI emits run ID, browser, commit/ref, target class, and final status.
 
-## Evidence and run reporting
+Primary CI runs Chrome after runtime/reporter checks and Cypress binary verification. `extended.yml` runs Chrome and Firefox independently. Security and docs gates remain separate failure domains.
 
-Cypress-native artifacts remain authoritative. `config/runReporter.js` adds a compact run-level manifest containing safe execution metadata. CI also writes an observability envelope with run ID, browser, commit/ref, target class, and final job status.
+Generic evidence must not retain credentials, raw authorization headers, cookies, or arbitrary response payloads.
 
-Retained evidence includes:
+## Dependency maintenance
 
-```text
-reports/
-├── run-manifest.json
-├── ci-observability.json
-└── ci-summary.md
+Dependabot maintains **npm** and **GitHub Actions**.
 
-cypress/
-├── screenshots/
-└── videos/
-```
+- weekly Monday 09:00 America/New_York schedule;
+- grouped minor/patch updates reduce low-risk PR noise;
+- majors remain standalone to isolate Cypress/Node/API compatibility changes;
+- Actions are reviewed as executable dependencies;
+- automated updates still require runtime self-tests, Chrome/Firefox coverage where applicable, security, and docs gates.
 
-Do not add credentials, cookies, raw authorization headers, or arbitrary application payloads to shared run diagnostics.
-
-## CI topology
-
-Primary CI runs Chrome after runtime/reporter self-tests and Cypress binary verification. `extended.yml` runs Chrome and Firefox independently for browser/framework changes, pushes to `main`, schedule, and manual dispatch.
-
-Each job has:
-
-- least-privilege `contents: read` permissions;
-- concurrency cancellation for superseded runs;
-- a bounded runtime;
-- run correlation;
-- retained evidence;
-- repository-owned browser target.
-
-A browser-only failure remains a compatibility signal. Do not hide it by broadening retries or weakening assertions.
-
-## Security and documentation governance
-
-`.github/workflows/security.yml` runs Trivy filesystem vulnerability/misconfiguration analysis and preserves findings. `.github/workflows/docs.yml` validates repository-local documentation facts including local links, workflow badges, Mermaid declarations, governance files, and badge constraints.
-
-Contribution/change expectations are documented in [`CONTRIBUTING.md`](CONTRIBUTING.md), with explicit ownership in [`.github/CODEOWNERS`](.github/CODEOWNERS).
+Dependabot, lockfiles, Cypress binary verification, and Trivy form complementary supply-chain controls rather than substitutes.
 
 ## Failure triage
 
 | Signal | First interpretation |
 | --- | --- |
 | Runtime self-test | Configuration/reporting contract |
-| Fixture connection failure | Repository fixture lifecycle/port ownership |
-| `cy.visit()` failure | Navigation/HTTP/page-load boundary |
+| Fixture connection | Repository fixture lifecycle/port ownership |
+| `cy.visit()` | Navigation/HTTP/page-load boundary |
 | Selector timeout | UI contract/readiness |
 | Invalid-login mismatch | Rejection/error semantics |
-| Chrome-only or Firefox-only failure | Browser compatibility |
+| Browser-only failure | Compatibility |
 | Retry-only pass | Reliability defect |
-| Security gate | Dependency/configuration risk |
-| Docs gate | Repository documentation/governance drift |
-
-## Extension rules
-
-When adding a flow:
-
-1. decide whether it belongs in the deterministic fixture or an explicit integration environment;
-2. expose stable application-owned selectors;
-3. keep state setup local to the test or a validated session boundary;
-4. use observable state instead of sleeps;
-5. add the negative path when rejection semantics matter;
-6. keep sensitive inputs out of command logs and shared diagnostics;
-7. update browser-matrix scope only when compatibility risk warrants it.
+| External-target-only failure | Environment/integration first |
+| Security/docs | Independent repository governance |
 
 ## Explicit anti-patterns
 
 - required CI against a public demonstration website;
-- fixed `cy.wait(number)` synchronization;
-- disabling `testIsolation` to preserve predecessor state;
+- fixed `cy.wait(number)` readiness;
+- disabled test isolation to preserve predecessor state;
 - styling/DOM-depth selectors as primary contracts;
-- blanket `cy.intercept()` stubbing that removes the behavior under test;
-- hidden authentication setup when authentication is itself under test;
-- weakening native navigation/status failures;
+- blanket `cy.intercept()` stubbing;
+- hidden auth setup when authentication is under test;
 - retries used to normalize unexplained flakiness;
-- credentials or response bodies in generic evidence.
+- credentials or arbitrary response bodies in generic evidence.
 
 ## Design references
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — configuration, fixture, runner, page, and evidence boundaries.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — runtime, fixture, runner, page, and evidence boundaries.
 - [`docs/TEST_STRATEGY.md`](docs/TEST_STRATEGY.md) — layer selection, browser policy, isolation, negative testing, and exit criteria.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — change-quality expectations.
 
-A useful Cypress framework makes the failed boundary obvious: runtime configuration, fixture lifecycle, navigation, browser compatibility, selector/readiness, application behavior, or environment integration.
+A strong Cypress framework makes the failing boundary obvious: **runtime configuration, fixture lifecycle, navigation, browser compatibility, selector/readiness, application behavior, or explicit environment integration**.
