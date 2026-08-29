@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { loadRuntime } = require('./runtime');
+const { DEFAULT_FIXTURE_URL, loadRuntime } = require('./runtime');
 
 const original = { ...process.env };
 
@@ -19,7 +19,7 @@ function withEnv(name, value, assertion) {
 try {
   delete process.env.CYPRESS_BASE_URL;
   const defaults = loadRuntime();
-  assert.equal(defaults.baseUrl, 'https://www.saucedemo.com');
+  assert.equal(defaults.baseUrl, DEFAULT_FIXTURE_URL);
   assert.ok(defaults.commandTimeout > 0);
 
   for (const value of [
