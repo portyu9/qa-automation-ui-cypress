@@ -1,4 +1,4 @@
-/** Feature operations for the Sauce Demo login page. */
+/** Feature operations for the configured authentication page. */
 class LoginPage {
   visit() {
     cy.visit('/');

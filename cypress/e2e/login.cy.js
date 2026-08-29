@@ -1,7 +1,7 @@
 import LoginPage from '../pages/LoginPage';
 import InventoryPage from '../pages/InventoryPage';
 
-describe('Sauce Demo Login', () => {
+describe('authentication flow', () => {
   const loginPage = new LoginPage();
   const inventoryPage = new InventoryPage();
 
@@ -23,7 +23,7 @@ describe('Sauce Demo Login', () => {
       loginPage.login(invalidUser.username, invalidUser.password);
 
       cy.location('pathname').should('eq', '/');
-      loginPage.errorMessage().should('be.visible').and('not.be.empty');
+      loginPage.errorMessage().should('be.visible').and('contain.text', 'Invalid username or password');
     });
   });
 });

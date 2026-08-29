@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - "config/**"
+      - "fixture/**"
       - "cypress/**"
       - "cypress.config.js"
       - "package.json"
@@ -31,7 +32,7 @@ jobs:
       matrix:
         browser: [chrome, firefox]
     env:
-      CYPRESS_BASE_URL: https://www.saucedemo.com
+      CYPRESS_BASE_URL: http://127.0.0.1:3100
       TEST_RUN_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.browser }}
     steps:
       - uses: actions/checkout@v7
@@ -43,7 +44,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run config:check
       - run: npm run cypress:verify
-      - name: Run Cypress in ${{ matrix.browser }}
+      - name: Run Cypress in ${{ matrix.browser }} against repository-owned fixture
         run: npm run test:${{ matrix.browser }}
       - name: Publish browser observability summary
         if: always()
@@ -55,6 +56,7 @@ jobs:
             echo "- Run ID: \`${TEST_RUN_ID}\`"
             echo "- Browser: \`${{ matrix.browser }}\`"
             echo "- Node: \`22\`"
+            echo '- Target: repository-owned loopback fixture'
             echo "- Job status: \`${{ job.status }}\`"
             echo "- Evidence: run manifest + screenshots + video"
           } | tee "reports/extended-${{ matrix.browser }}/summary.md" >> "$GITHUB_STEP_SUMMARY"

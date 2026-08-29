@@ -1,5 +1,7 @@
 'use strict';
 
+const DEFAULT_FIXTURE_URL = 'http://127.0.0.1:3100';
+
 function absoluteHttpUrl(name, fallback) {
   const raw = process.env[name] || fallback;
   let parsed;
@@ -8,8 +10,8 @@ function absoluteHttpUrl(name, fallback) {
   } catch {
     throw new Error(`${name} must be an absolute URL`);
   }
-  if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw new Error(`${name} must use http or https`);
+  if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname) {
+    throw new Error(`${name} must use http or https with a hostname`);
   }
   if (parsed.username || parsed.password) {
     throw new Error(`${name} must not contain URL credentials`);
@@ -32,7 +34,7 @@ function positiveInteger(name, fallback) {
 
 function loadRuntime() {
   return Object.freeze({
-    baseUrl: absoluteHttpUrl('CYPRESS_BASE_URL', 'https://www.saucedemo.com'),
+    baseUrl: absoluteHttpUrl('CYPRESS_BASE_URL', DEFAULT_FIXTURE_URL),
     commandTimeout: positiveInteger('CYPRESS_COMMAND_TIMEOUT_MS', 10_000),
     requestTimeout: positiveInteger('CYPRESS_REQUEST_TIMEOUT_MS', 10_000),
     responseTimeout: positiveInteger('CYPRESS_RESPONSE_TIMEOUT_MS', 30_000),
@@ -41,4 +43,4 @@ function loadRuntime() {
   });
 }
 
-module.exports = { loadRuntime };
+module.exports = { DEFAULT_FIXTURE_URL, loadRuntime };

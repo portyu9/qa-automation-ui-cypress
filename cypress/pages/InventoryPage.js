@@ -1,4 +1,4 @@
-/** Feature operations for the Sauce Demo inventory page. */
+/** Feature operations for the authenticated inventory page. */
 class InventoryPage {
   get inventoryItems() {
     return cy.get('[data-test="inventory-item"]');
