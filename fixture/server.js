@@ -54,11 +54,42 @@ const inventoryPage = `<!doctype html>
     <h1>Inventory Fixture</h1>
     <button id="react-burger-menu-btn" type="button">Menu</button>
     <a id="logout_sidebar_link" href="/">Sign out</a>
+    <a data-test="capability-link" href="/capabilities.html">Capability surface</a>
     <section aria-label="Inventory">
       <article data-test="inventory-item"><h2>Fixture Item A</h2></article>
       <article data-test="inventory-item"><h2>Fixture Item B</h2></article>
     </section>
   </main>
+</body>
+</html>`;
+
+const capabilityPage = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cypress Capability Surface</title>
+</head>
+<body>
+  <main>
+    <h1 data-test="capability-title">Cypress Capability Surface</h1>
+    <button data-test="load-profile" type="button">Load profile</button>
+    <output data-test="profile-output">idle</output>
+    <button data-test="start-timer" type="button">Start timer</button>
+    <output data-test="timer-output">pending</output>
+  </main>
+  <script>
+    document.querySelector('[data-test="load-profile"]').addEventListener('click', async () => {
+      const response = await fetch('/api/profile', { headers: { Accept: 'application/json' } });
+      const body = await response.json();
+      document.querySelector('[data-test="profile-output"]').textContent = body.name;
+    });
+    document.querySelector('[data-test="start-timer"]').addEventListener('click', () => {
+      setTimeout(() => {
+        document.querySelector('[data-test="timer-output"]').textContent = 'complete';
+      }, 1000);
+    });
+  </script>
 </body>
 </html>`;
 
@@ -83,12 +114,25 @@ function createFixtureServer() {
       respond(res, 200, 'application/json; charset=utf-8', JSON.stringify({ status: 'ok' }));
       return;
     }
+    if (requestUrl.pathname === '/api/profile') {
+      respond(
+        res,
+        200,
+        'application/json; charset=utf-8',
+        JSON.stringify({ id: 1, name: 'fixture-profile' })
+      );
+      return;
+    }
     if (requestUrl.pathname === '/') {
       respond(res, 200, 'text/html; charset=utf-8', loginPage);
       return;
     }
     if (requestUrl.pathname === '/inventory.html') {
       respond(res, 200, 'text/html; charset=utf-8', inventoryPage);
+      return;
+    }
+    if (requestUrl.pathname === '/capabilities.html') {
+      respond(res, 200, 'text/html; charset=utf-8', capabilityPage);
       return;
     }
     respond(res, 404, 'text/plain; charset=utf-8', 'Not Found');
