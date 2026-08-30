@@ -16,7 +16,8 @@ Cypress.Commands.add('visitApp', (path = '/') => {
 });
 
 Cypress.Commands.add('stubJson', (method, url, body, alias, overrides = {}) => {
-  if (typeof alias !== 'string' || !alias.trim() || alias.startsWith('@')) {
+  const normalizedAlias = typeof alias === 'string' ? alias.trim() : '';
+  if (!normalizedAlias || normalizedAlias.startsWith('@')) {
     throw new Error('stubJson requires a non-empty alias without the @ prefix');
   }
 
@@ -28,5 +29,5 @@ Cypress.Commands.add('stubJson', (method, url, body, alias, overrides = {}) => {
     },
     body,
     ...overrides,
-  }).as(alias.trim());
+  }).as(normalizedAlias);
 });
