@@ -16,7 +16,7 @@ function sanitizeUrl(value) {
   try {
     parsed = new URL(raw);
   } catch {
-    return raw;
+    return /^https?:/i.test(raw) ? '<invalid-url>' : raw;
   }
 
   if (!['http:', 'https:'].includes(parsed.protocol)) return raw;
