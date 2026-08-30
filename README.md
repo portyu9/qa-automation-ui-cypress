@@ -99,20 +99,17 @@ flowchart LR
 
 ```text
 .
-├── config/{runtime.js,runtime.selftest.js,runReporter.js,runReporter.selftest.js}
-├── fixture/server.js
+├── .github/
+│   ├── scripts/
+│   └── workflows/
+├── config/
 ├── cypress/
-│   ├── e2e/capabilities.cy.js
 │   ├── e2e/
 │   ├── fixtures/
 │   ├── pages/
-│   └── support/commands.js
-├── docs/{ARCHITECTURE.md,TEST_STRATEGY.md}
-├── .github/workflows/{ci,docs,extended,security}.yml
-├── CONTRIBUTING.md
-├── cypress.config.js
-├── package.json
-└── package-lock.json
+│   └── support/
+├── docs/
+└── fixture/
 ```
 
 ## Quick start
