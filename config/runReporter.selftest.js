@@ -39,7 +39,10 @@ const manifest = buildRunManifest(
                 state: 'failed',
                 error: {
                   message:
-                    'Authorization=Bearer abc123 at https://example.test/login?token=secret data:text/plain,private-payload',
+                    'Authorization=Bearer abc123 at https://example.test/login?token=secret ' +
+                    'data:text/html,<h1>private-payload</h1> ' +
+                    'javascript:alert("dialog-secret") ' +
+                    'file:///tmp/private-report.html',
                 },
               },
             ],
@@ -84,5 +87,9 @@ assert.ok(manifest.runs[0].tests[1].title.length <= 512);
 assert.equal(manifest.runs[0].tests[1].error.includes('abc123'), false);
 assert.equal(manifest.runs[0].tests[1].error.includes('?token=secret'), false);
 assert.equal(manifest.runs[0].tests[1].error.includes('private-payload'), false);
+assert.equal(manifest.runs[0].tests[1].error.includes('dialog-secret'), false);
+assert.equal(manifest.runs[0].tests[1].error.includes('private-report.html'), false);
 assert.equal(manifest.runs[0].tests[1].error.includes('data:<redacted>'), true);
+assert.equal(manifest.runs[0].tests[1].error.includes('javascript:<redacted>'), true);
+assert.equal(manifest.runs[0].tests[1].error.includes('file:<redacted>'), true);
 console.log('run reporter contract: ok');
