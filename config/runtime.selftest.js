@@ -36,6 +36,7 @@ try {
     'https://user:password@example.test',
     'https://example.test/app?access_token=secret',
     'https://example.test/app#fragment',
+    'https://example.test:0/app',
   ]) {
     withEnv('CYPRESS_BASE_URL', value, () => {
       assert.throws(() => loadRuntime(), /CYPRESS_BASE_URL/);
