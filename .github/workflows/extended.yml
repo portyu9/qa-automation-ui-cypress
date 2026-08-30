@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   cross-browser:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     strategy:
       fail-fast: false
@@ -35,8 +35,8 @@ jobs:
       CYPRESS_BASE_URL: http://127.0.0.1:3100
       TEST_RUN_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.browser }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
           cache: npm
@@ -46,6 +46,8 @@ jobs:
       - run: npm run cypress:verify
       - name: Run Cypress in ${{ matrix.browser }} against repository-owned fixture
         run: npm run test:${{ matrix.browser }}
+      - name: Reject retry-recovered passes
+        run: node config/retryPolicy.js reports/run-manifest.json
       - name: Publish browser observability summary
         if: always()
         run: |
@@ -59,10 +61,11 @@ jobs:
             echo '- Target: repository-owned loopback fixture'
             echo "- Job status: \`${{ job.status }}\`"
             echo "- Evidence: run manifest + screenshots + video"
+            echo '- Flake policy: retry-recovered passes fail the gate'
           } | tee "reports/extended-${{ matrix.browser }}/summary.md" >> "$GITHUB_STEP_SUMMARY"
       - name: Upload cross-browser evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: cypress-${{ matrix.browser }}-extended-evidence
           path: |
