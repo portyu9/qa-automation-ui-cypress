@@ -9,7 +9,7 @@ The Cypress layer proves browser-visible workflows while keeping framework polic
 | Layer | Runner | Target | Primary concern |
 | --- | --- | --- | --- |
 | Runtime contract | Node self-test | None | URL/timeout/correlation validation |
-| Reporter contract | Node self-test | None | Manifest mapping, redaction, bounds |
+| Reporter contract | Node self-test | None | Manifest mapping, redaction, bounds, allowlist |
 | Primary browser | Cypress Chrome | Local fixture | Critical navigation/authentication behavior |
 | Native command/state | Cypress Chrome | Local fixture | Intercepts, aliases, tasks, sessions, timers |
 | Alternate browser | Cypress Firefox | Local fixture | Compatibility |
@@ -32,7 +32,7 @@ Those concerns belong to an explicit deployed-environment layer, not framework c
 
 ## Configuration-negative testing
 
-Runtime self-tests reject relative URLs, URL credentials, query/fragment-bearing targets, non-positive timeout budgets, unsafe correlation tokens, and overlong run IDs. Text inputs are normalized once at the runtime boundary.
+Runtime self-tests reject relative URLs, URL credentials, query/fragment-bearing targets, explicit target port `0`, non-positive timeout budgets, unsafe correlation tokens, and overlong run IDs. Text inputs are normalized once at the runtime boundary.
 
 `npm run config:check` also verifies run-reporting behavior and config loading before Cypress binary/browser execution.
 
@@ -108,10 +108,12 @@ Do not replace the deterministic required gate with a public endpoint merely bec
 Inspect failures in this order:
 
 1. Cypress assertion/command log;
-2. `reports/run-manifest.json` for run/browser/attempt metadata and sanitized bounded error text;
+2. `reports/run-manifest.json` for reviewed run/browser/spec/test metadata and sanitized bounded error text;
 3. screenshot for rendered state;
 4. video for sequence/context;
 5. CI/bootstrap logs for runner/browser/fixture infrastructure.
+
+The manifest is an **allowlisted evidence projection**, not a serialized copy of Cypress's `after:run` result object. It retains only reviewed browser/platform/runtime labels, normalized totals, per-spec allowlisted stats, and bounded/redacted test state. Unknown properties from Cypress result objects are discarded by default. Non-finite/negative numeric values are normalized rather than persisted as arbitrary runtime data.
 
 Structured evidence removes URL credentials/query/fragment and redacts common credential/token assignments. Screenshots/video can still contain visible data and must use synthetic/controlled inputs.
 
@@ -120,7 +122,7 @@ Structured evidence removes URL credentials/query/fragment and redacts common cr
 | Failure class | First interpretation |
 | --- | --- |
 | Runtime self-test | Configuration-policy regression |
-| Reporter self-test | Evidence/privacy regression |
+| Reporter self-test | Evidence/privacy/schema-allowlist regression |
 | Fixture startup/connection | Repository fixture lifecycle/port ownership |
 | Cypress verify/startup | Runner/browser infrastructure |
 | Intercept/session/task/clock contract | Native command/state ownership |
@@ -141,7 +143,7 @@ A UI/framework change is ready when:
 
 - runtime and reporter self-tests pass;
 - Cypress configuration loads cleanly;
-- correlation/runtime inputs fail closed before browser startup;
+- correlation/runtime inputs and explicit port `0` fail closed before browser startup;
 - custom commands preserve native chain semantics;
 - session/intercept/timer capability contracts pass;
 - the repository fixture starts and stops cleanly;
@@ -149,5 +151,5 @@ A UI/framework change is ready when:
 - Firefox passes when the extended workflow applies;
 - no fixed wait or hidden retry workaround is introduced;
 - changed selectors remain stable and application-owned;
-- structured evidence remains privacy-aware and bounded;
+- structured evidence remains privacy-aware, bounded, numeric-safe, and explicitly allowlisted;
 - any external-target behavior is explicitly classified and documented.
