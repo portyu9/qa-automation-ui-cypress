@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { buildRunManifest } = require('./runReporter');
+const { buildRunManifest, sanitizeUrl } = require('./runReporter');
 
 const manifest = buildRunManifest(
   {
@@ -57,6 +57,7 @@ const manifest = buildRunManifest(
 assert.equal(manifest.schemaVersion, 1);
 assert.equal(manifest.runId, 'run-123');
 assert.equal(manifest.baseUrl, 'https://example.test/app');
+assert.equal(sanitizeUrl('https://user:secret@%zz.invalid/path'), '<invalid-url>');
 assert.deepEqual(manifest.totals, {
   tests: 2,
   passed: 1,
