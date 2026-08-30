@@ -39,7 +39,7 @@ const manifest = buildRunManifest(
                 state: 'failed',
                 error: {
                   message:
-                    'Authorization=Bearer abc123 at https://example.test/login?token=secret',
+                    'Authorization=Bearer abc123 at https://example.test/login?token=secret data:text/plain,private-payload',
                 },
               },
             ],
@@ -58,6 +58,9 @@ assert.equal(manifest.schemaVersion, 1);
 assert.equal(manifest.runId, 'run-123');
 assert.equal(manifest.baseUrl, 'https://example.test/app');
 assert.equal(sanitizeUrl('https://user:secret@%zz.invalid/path'), '<invalid-url>');
+assert.equal(sanitizeUrl('about:blank'), 'about:blank');
+assert.equal(sanitizeUrl('data:text/html,<h1>private</h1>'), 'data:<redacted>');
+assert.equal(sanitizeUrl('file:///tmp/private-report.html'), 'file:<redacted>');
 assert.deepEqual(manifest.totals, {
   tests: 2,
   passed: 1,
@@ -80,5 +83,6 @@ assert.equal(manifest.runs[0].tests[1].title.includes('secret'), false);
 assert.ok(manifest.runs[0].tests[1].title.length <= 512);
 assert.equal(manifest.runs[0].tests[1].error.includes('abc123'), false);
 assert.equal(manifest.runs[0].tests[1].error.includes('?token=secret'), false);
-assert.equal(manifest.runs[0].tests[1].error.includes('<redacted>'), true);
+assert.equal(manifest.runs[0].tests[1].error.includes('private-payload'), false);
+assert.equal(manifest.runs[0].tests[1].error.includes('data:<redacted>'), true);
 console.log('run reporter contract: ok');
