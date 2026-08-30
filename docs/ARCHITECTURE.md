@@ -25,7 +25,7 @@ The repository fixture exists to make framework validation independent of public
 
 ## Runtime configuration boundary
 
-`config/runtime.js` validates `CYPRESS_BASE_URL`, timeout budgets, and run correlation before Cypress starts browser work. URLs must be absolute HTTP(S), contain a hostname, and contain no credentials, query, or fragment.
+`config/runtime.js` validates `CYPRESS_BASE_URL`, timeout budgets, and run correlation before Cypress starts browser work. URLs must be absolute HTTP(S), contain a hostname, reject explicit port `0`, and contain no credentials, query, or fragment.
 
 Operator-provided `TEST_RUN_ID` values are trimmed and constrained to 1–128 ASCII letters, digits, dots, underscores, colons, or hyphens. Unsafe whitespace/control characters and overlong tokens fail before they can become report/evidence identity.
 
@@ -89,13 +89,22 @@ Browser-side spec code should not own CI artifact writing or process lifecycle.
 
 ## Run reporter
 
-`config/runReporter.js` maps Cypress's supported `after:run` result object into an atomic manifest containing run identity, sanitized target, browser/OS/runtime information, totals, spec summaries, final test state, attempt count, and bounded failure text.
+`config/runReporter.js` does **not** serialize Cypress's broad `after:run` object. It constructs a deliberate allowlisted manifest schema containing only:
 
-Reporter/config logic is self-tested without a browser so framework-policy failures are distinguishable from browser failures.
+- run identity and sanitized base URL;
+- bounded browser/OS/Cypress runtime labels;
+- normalized finite non-negative top-level totals;
+- bounded/redacted spec labels;
+- an allowlisted per-spec stats envelope (`suites`, `tests`, `passes`, `pending`, `skipped`, `failures`, duration);
+- bounded/redacted test title/state, attempt count, and final error text.
+
+Unknown or newly introduced properties on Cypress result objects are therefore ignored unless deliberately reviewed and added to the evidence contract. Numeric fields that are non-finite or negative normalize to `null` (or zero at required top-level totals) instead of leaking implementation-specific values into retained evidence.
+
+The manifest is written atomically. Reporter/config logic is self-tested without a browser so framework-policy failures are distinguishable from browser failures.
 
 ## Diagnostic privacy
 
-Structured evidence is sanitized before persistence. URLs lose credentials/query/fragment, common credential assignments are redacted, and failure text is bounded. Native screenshots/video can still contain application-visible content; controlled synthetic data remains required.
+Structured evidence is sanitized before persistence. URLs lose credentials/query/fragment, common credential assignments are redacted, and labels/error text are bounded. The allowlist prevents arbitrary third-party result-object properties from being persisted by accident. Native screenshots/video can still contain application-visible content; controlled synthetic data remains required.
 
 ## Parallelism and port ownership
 
@@ -119,7 +128,8 @@ New framework behavior should:
 4. use Node events for process/filesystem lifecycle concerns;
 5. keep page modules feature-oriented and small;
 6. maintain test isolation and explicit session/intercept/clock ownership;
-7. sanitize and bound structured diagnostics before persistence;
-8. add zero-browser tests when config/reporter logic can be separated from the browser;
-9. add cross-origin infrastructure only for a real multi-origin requirement;
-10. classify deployed-environment tests separately from required framework CI.
+7. construct retained evidence from reviewed allowlists rather than copying third-party result objects;
+8. sanitize and bound structured diagnostics before persistence;
+9. add zero-browser tests when config/reporter logic can be separated from the browser;
+10. add cross-origin infrastructure only for a real multi-origin requirement;
+11. classify deployed-environment tests separately from required framework CI.
