@@ -50,6 +50,10 @@ function compactLabel(value) {
   return boundedText(value, MAX_LABEL_LENGTH);
 }
 
+function compactTaskLog(value) {
+  return boundedText(value, MAX_LABEL_LENGTH);
+}
+
 function finiteNonNegative(value) {
   const numeric = Number(value);
   return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
@@ -131,6 +135,7 @@ function writeRunManifest(projectRoot, runtime, results) {
 module.exports = {
   buildRunManifest,
   compactError,
+  compactTaskLog,
   redactText,
   sanitizeUrl,
   writeRunManifest,

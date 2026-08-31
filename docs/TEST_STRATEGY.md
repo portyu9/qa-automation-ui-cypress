@@ -10,11 +10,13 @@ The Cypress layer proves browser-visible workflows while keeping framework polic
 | --- | --- | --- | --- |
 | Runtime contract | Node self-test | None | URL/timeout/correlation validation |
 | Reporter contract | Node self-test | None | Manifest mapping, redaction, bounds, allowlist |
-| Primary browser | Cypress Chrome | Local fixture | Critical navigation/authentication behavior |
+| Primary browser | Cypress Chrome + Node 22 | Local fixture | Critical navigation/authentication behavior |
 | Native command/state | Cypress Chrome | Local fixture | Intercepts, aliases, tasks, sessions, timers |
-| Alternate browser | Cypress Firefox | Local fixture | Compatibility |
+| Browser compatibility | Cypress Firefox + Node 22 | Local fixture | Alternate-browser risk |
+| Runtime compatibility | Cypress Chrome + Node 24 | Local fixture | Supported Node-major risk |
 | Controlled dependency | Cypress + `cy.intercept()` | Local/selected target | Explicit dependency condition |
 | Environment integration | Cypress | Explicit `CYPRESS_BASE_URL` | Deployed-system contract |
+| Security | CodeQL + Trivy + Dependency Review | Repository / PR delta | SAST, dependency/configuration/secret risk, newly introduced dependency risk |
 
 ## Deterministic default target
 
@@ -97,6 +99,8 @@ Do not introduce `cy.origin()` or a public remote origin merely to increase feat
 
 Run-mode retries are capped. A retry-only pass is a reliability defect signal and should be classified. Retry count must not be increased to compensate for weak selectors, public-network variability, or missing readiness conditions.
 
+Both primary and compatibility workflows run `config/retryPolicy.js` after Cypress and fail when a test only becomes green after retry. Retried success is evidence for triage, not a production-readiness waiver.
+
 ## External environment policy
 
 A deployed environment is selected by setting `CYPRESS_BASE_URL` to a non-default safe HTTP(S) URL. Such execution should be classified separately because failures may belong to deployment state, environment data, networking, or downstream dependencies.
@@ -117,6 +121,16 @@ The manifest is an **allowlisted evidence projection**, not a serialized copy of
 
 Structured evidence removes URL credentials/query/fragment and redacts common credential/token assignments. Screenshots/video can still contain visible data and must use synthetic/controlled inputs.
 
+## Security strategy
+
+Security is an independent failure domain and is not retried as browser flakiness:
+
+- CodeQL performs JavaScript/TypeScript SAST with the extended query suite;
+- Trivy scans the repository filesystem for fixed HIGH/CRITICAL dependency findings, supported HIGH/CRITICAL misconfiguration findings, and committed secret findings;
+- GitHub Dependency Review evaluates pull-request dependency deltas when the repository Dependency graph is available.
+
+If GitHub Dependency graph is unavailable, the workflow records that limitation. Trivy remains a required whole-repository gate but is not represented as equivalent to change-aware dependency-diff analysis.
+
 ## Failure classification
 
 | Failure class | First interpretation |
@@ -129,13 +143,21 @@ Structured evidence removes URL credentials/query/fragment and redacts common cr
 | Navigation failure | HTTP/page-load/application route boundary |
 | Selector timeout | UI ownership/readiness |
 | Authentication negative mismatch | Rejection/error semantics |
-| Browser-specific failure | Compatibility |
+| Firefox-only failure | Browser compatibility |
+| Node-24/Chrome-only failure | Runtime compatibility |
 | Retry-only pass | Reliability/flakiness |
+| Repository security | Source/dependency/configuration/secret risk |
+| Dependency Review | Newly introduced dependency risk or unavailable GitHub Dependency graph |
 | Explicit external target failure | Environment/integration first, framework second |
 
-## Browser coverage
+## Browser and runtime coverage
 
-Chrome is the primary gate. Firefox is the extended compatibility signal. Add more browser dimensions only for known compatibility risk or release criteria; do not multiply low-risk cases mechanically.
+The fast required CI lane is Node 22 + Chrome. Extended compatibility deliberately tests independent risk axes rather than a redundant Cartesian matrix:
+
+- Node 22 + Firefox qualifies alternate-browser behavior;
+- Node 24 + Chrome qualifies the newer supported Node runtime while holding the primary browser constant.
+
+Add more browser/runtime combinations only for known compatibility risk or release criteria. If a defect suggests an interaction between two dimensions, add that combination intentionally rather than multiplying all cases mechanically.
 
 ## Exit criteria
 
@@ -147,9 +169,12 @@ A UI/framework change is ready when:
 - custom commands preserve native chain semantics;
 - session/intercept/timer capability contracts pass;
 - the repository fixture starts and stops cleanly;
-- Chrome passes the deterministic browser contract;
-- Firefox passes when the extended workflow applies;
+- Chrome on Node 22 passes the deterministic primary browser contract;
+- Firefox on Node 22 passes when the compatibility workflow applies;
+- Chrome on Node 24 passes when the compatibility workflow applies;
+- retry-recovered passes remain failing reliability signals;
 - no fixed wait or hidden retry workaround is introduced;
 - changed selectors remain stable and application-owned;
 - structured evidence remains privacy-aware, bounded, numeric-safe, and explicitly allowlisted;
+- CodeQL and Trivy security gates pass, and Dependency Review runs when GitHub Dependency graph is available;
 - any external-target behavior is explicitly classified and documented.

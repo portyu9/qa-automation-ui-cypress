@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { buildRunManifest, sanitizeUrl } = require('./runReporter');
+const { buildRunManifest, compactTaskLog, sanitizeUrl } = require('./runReporter');
 
 const manifest = buildRunManifest(
   {
@@ -92,4 +92,14 @@ assert.equal(manifest.runs[0].tests[1].error.includes('private-report.html'), fa
 assert.equal(manifest.runs[0].tests[1].error.includes('data:<redacted>'), true);
 assert.equal(manifest.runs[0].tests[1].error.includes('javascript:<redacted>'), true);
 assert.equal(manifest.runs[0].tests[1].error.includes('file:<redacted>'), true);
+
+const taskLog = compactTaskLog(
+  'Authorization=Bearer task-secret https://example.test/path?token=private ' + 'x'.repeat(600)
+);
+assert.equal(taskLog.includes('task-secret'), false);
+assert.equal(taskLog.includes('?token=private'), false);
+assert.equal(taskLog.includes('Authorization=<redacted>'), true);
+assert.ok(taskLog.length <= 512);
+assert.equal(taskLog.endsWith('…<truncated>'), true);
+
 console.log('run reporter contract: ok');
