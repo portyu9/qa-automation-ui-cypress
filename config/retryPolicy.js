@@ -47,10 +47,18 @@ function assertNoRetryRecoveredPasses(manifest) {
 }
 
 function readManifest(filePath) {
-  if (!fs.existsSync(filePath) || fs.statSync(filePath).size === 0) {
-    throw new Error(`Cypress run manifest is missing or empty: ${filePath}`);
+  let content;
+  try {
+    content = fs.readFileSync(filePath, 'utf8');
+  } catch (error) {
+    if (error && error.code === 'ENOENT') {
+      throw new Error(`Cypress run manifest is missing: ${filePath}`);
+    }
+    throw error;
   }
-  const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  if (content.length === 0) throw new Error(`Cypress run manifest is empty: ${filePath}`);
+
+  const parsed = JSON.parse(content);
   if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.runs)) {
     throw new Error('Cypress run manifest must contain a runs array');
   }
