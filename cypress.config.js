@@ -1,6 +1,6 @@
 const { defineConfig } = require('cypress');
 const { DEFAULT_FIXTURE_URL, loadRuntime } = require('./config/runtime');
-const { writeRunManifest } = require('./config/runReporter');
+const { compactTaskLog, writeRunManifest } = require('./config/runReporter');
 const { startFixtureServer, stopFixtureServer } = require('./fixture/server');
 
 const runtime = loadRuntime();
@@ -35,7 +35,7 @@ module.exports = defineConfig({
 
       on('task', {
         log(message) {
-          console.log(`[cypress:${runtime.runId}] ${String(message)}`);
+          console.log(`[cypress:${runtime.runId}] ${compactTaskLog(message)}`);
           return null;
         },
       });
