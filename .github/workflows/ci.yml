@@ -16,6 +16,8 @@ concurrency:
 env:
   CYPRESS_BASE_URL: http://127.0.0.1:3100
   TEST_RUN_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}
+  NODE_VERSION: 24.20.0
+  NPM_VERSION: 11.19.1
 
 jobs:
   e2e:
@@ -25,16 +27,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: package-lock.json
       - name: Pin npm toolchain
-        run: npm install --global npm@11.19.1 --no-audit --no-fund
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global "npm@${NPM_VERSION}" --ignore-scripts --no-audit --no-fund
+          [[ "$(npm --version)" == "$NPM_VERSION" ]]
       - name: Install locked dependencies without lifecycle scripts
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Install the explicitly approved Cypress binary
         run: npm run cypress:install
-      - run: npm run config:check
+      - name: Validate framework and workflow contracts
+        run: npm run config:check
       - run: npm run cypress:verify
       - name: Run Chrome E2E gate against repository-owned fixture
         run: npm run test:chrome
@@ -52,7 +59,7 @@ jobs:
             schemaVersion: 1,
             framework: 'cypress',
             runId: process.env.TEST_RUN_ID,
-            dimension: { node: '22', browser: 'chrome', target: 'local-fixture' },
+            dimension: { node: process.env.NODE_VERSION, browser: 'chrome', target: 'local-fixture' },
             status: process.env.JOB_STATUS,
             sha: process.env.GITHUB_SHA,
             ref: process.env.GITHUB_REF,
@@ -60,13 +67,15 @@ jobs:
           fs.writeFileSync('reports/ci-observability.json', `${JSON.stringify(payload, null, 2)}\n`);
           NODE
           {
-            echo '### Cypress · Chrome'
+            echo '### Cypress · Chrome · current LTS'
             echo
             echo "- Run ID: \`${TEST_RUN_ID}\`"
             echo "- Job status: \`${JOB_STATUS}\`"
+            echo "- Node: \`${NODE_VERSION}\`"
+            echo "- npm: \`${NPM_VERSION}\` (exactly verified)"
             echo '- Target: repository-owned loopback fixture'
-            echo '- Dependencies: npm 11.19.1 + lockfile with lifecycle scripts disabled; Cypress binary installed explicitly'
-            echo '- Evidence: validated non-zero run manifest + failure screenshots/video + CI observability envelope'
+            echo '- Dependencies: lockfile with lifecycle scripts disabled; Cypress binary installed explicitly'
+            echo '- Evidence: minimum five executed tests + reconciled manifest + failure screenshots/video + CI observability envelope'
             echo '- Flake policy: retry-recovered passes fail the gate'
           } | tee reports/ci-summary.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload Cypress evidence
@@ -81,3 +90,18 @@ jobs:
             cypress/downloads/
           if-no-files-found: error
           retention-days: 14
+
+  ci-gate:
+    name: ci-gate
+    if: always()
+    needs: [e2e]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Evaluate required CI jobs
+        env:
+          E2E: ${{ needs.e2e.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$E2E" == "success" ]] || { echo "e2e=$E2E"; exit 1; }
