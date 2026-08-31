@@ -2,6 +2,9 @@
 
 const fs = require('node:fs');
 
+const MIN_EXECUTED_TESTS = 5;
+const TERMINAL_STATES = new Set(['passed', 'failed', 'pending', 'skipped']);
+
 function retryRecoveredPasses(manifest) {
   const failures = [];
   for (const run of Array.isArray(manifest?.runs) ? manifest.runs : []) {
@@ -18,21 +21,68 @@ function retryRecoveredPasses(manifest) {
   return failures;
 }
 
+function integerCount(value, label) {
+  const count = Number(value);
+  if (!Number.isInteger(count) || count < 0) {
+    throw new Error(`Cypress run manifest ${label} must be a non-negative integer: ${value}`);
+  }
+  return count;
+}
+
 function assertMeaningfulRunManifest(manifest) {
   const runs = Array.isArray(manifest?.runs) ? manifest.runs : [];
   const tests = runs.flatMap((run) => (Array.isArray(run?.tests) ? run.tests : []));
-  const totalTests = Number(manifest?.totals?.tests);
-  const passed = Number(manifest?.totals?.passed);
-  const failed = Number(manifest?.totals?.failed);
+  const totalTests = integerCount(manifest?.totals?.tests, 'totals.tests');
+  const passed = integerCount(manifest?.totals?.passed, 'totals.passed');
+  const failed = integerCount(manifest?.totals?.failed, 'totals.failed');
+  const pending = integerCount(manifest?.totals?.pending, 'totals.pending');
+  const skipped = integerCount(manifest?.totals?.skipped, 'totals.skipped');
+  const executed = passed + failed;
 
-  if (runs.length === 0 || tests.length === 0 || !Number.isInteger(totalTests) || totalTests <= 0) {
-    throw new Error('Cypress run manifest contains zero executed tests');
+  if (runs.length === 0 || tests.length === 0 || totalTests === 0) {
+    throw new Error('Cypress run manifest contains zero discovered tests');
   }
   if (totalTests !== tests.length) {
-    throw new Error(`Cypress run manifest total mismatch: totals.tests=${totalTests}, projectedTests=${tests.length}`);
+    throw new Error(
+      `Cypress run manifest total mismatch: totals.tests=${totalTests}, projectedTests=${tests.length}`
+    );
   }
-  if (!Number.isInteger(passed) || passed <= 0 || failed !== 0) {
-    throw new Error(`Cypress run manifest is not a clean executed run: passed=${passed}, failed=${failed}`);
+  if (totalTests !== passed + failed + pending + skipped) {
+    throw new Error(
+      `Cypress run manifest count mismatch: total=${totalTests}, passed=${passed}, failed=${failed}, pending=${pending}, skipped=${skipped}`
+    );
+  }
+
+  const projected = { passed: 0, failed: 0, pending: 0, skipped: 0 };
+  for (const test of tests) {
+    const state = String(test?.state ?? '');
+    if (!TERMINAL_STATES.has(state)) {
+      throw new Error(`Cypress run manifest contains unsupported test state: ${state || '<empty>'}`);
+    }
+    projected[state] += 1;
+  }
+  for (const state of Object.keys(projected)) {
+    if (projected[state] !== { passed, failed, pending, skipped }[state]) {
+      throw new Error(
+        `Cypress run manifest ${state} mismatch: totals=${{ passed, failed, pending, skipped }[state]}, projected=${projected[state]}`
+      );
+    }
+  }
+
+  if (executed < MIN_EXECUTED_TESTS) {
+    throw new Error(
+      `Cypress run manifest executed-test floor not met: executed=${executed}, required=${MIN_EXECUTED_TESTS}`
+    );
+  }
+  if (failed !== 0 || passed !== executed) {
+    throw new Error(
+      `Cypress run manifest is not a clean executed run: passed=${passed}, failed=${failed}`
+    );
+  }
+  if (pending !== 0 || skipped !== 0) {
+    throw new Error(
+      `Cypress required run contains disabled tests: pending=${pending}, skipped=${skipped}`
+    );
   }
 }
 
@@ -71,10 +121,14 @@ if (require.main === module) {
   const manifest = readManifest(filePath);
   assertMeaningfulRunManifest(manifest);
   assertNoRetryRecoveredPasses(manifest);
-  console.log(`Cypress evidence policy: tests=${manifest.totals.tests}, passed=${manifest.totals.passed}, no retry-recovered passes`);
+  const executed = Number(manifest.totals.passed) + Number(manifest.totals.failed);
+  console.log(
+    `Cypress evidence policy: executed=${executed}, passed=${manifest.totals.passed}, pending=0, skipped=0, no retry-recovered passes`
+  );
 }
 
 module.exports = {
+  MIN_EXECUTED_TESTS,
   assertMeaningfulRunManifest,
   assertNoRetryRecoveredPasses,
   retryRecoveredPasses,

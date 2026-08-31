@@ -2,7 +2,7 @@
 
 ## Design objective
 
-The framework keeps browser behavior native to Cypress while centralizing cross-cutting execution policy: validated runtime configuration, deterministic target ownership, feature page modules, explicit command/state contracts, test isolation, bounded retries, and privacy-aware run reporting.
+The framework keeps browser behavior native to Cypress while centralizing cross-cutting execution policy: validated runtime configuration, deterministic target ownership, feature page modules, explicit command/state contracts, test isolation, bounded retries, privacy-aware run reporting, immutable workflow dependencies, and independently attributable security signals.
 
 ```mermaid
 flowchart LR
@@ -19,6 +19,8 @@ flowchart LR
     CC --> RUN[after:run]
     RUN --> REP[runReporter]
     REP --> MAN[run-manifest.json]
+    MAN --> EV[evidence policy]
+    EV --> GATE[CI / compatibility gates]
 ```
 
 The repository fixture exists to make framework validation independent of public-network availability. It is not a second general-purpose application framework.
@@ -87,7 +89,7 @@ Node events own privileged process/filesystem responsibilities:
 
 Browser-side spec code should not own CI artifact writing or process lifecycle.
 
-## Run reporter
+## Run reporter and evidence boundary
 
 `config/runReporter.js` does **not** serialize Cypress's broad `after:run` object. It constructs a deliberate allowlisted manifest schema containing only:
 
@@ -100,7 +102,9 @@ Browser-side spec code should not own CI artifact writing or process lifecycle.
 
 Unknown or newly introduced properties on Cypress result objects are therefore ignored unless deliberately reviewed and added to the evidence contract. Numeric fields that are non-finite or negative normalize to `null` (or zero at required top-level totals) instead of leaking implementation-specific values into retained evidence.
 
-The manifest is written atomically. Reporter/config logic is self-tested without a browser so framework-policy failures are distinguishable from browser failures.
+The manifest is written atomically. `config/retryPolicy.js` then treats the manifest as evidence that must prove the intended work occurred: aggregate totals must reconcile with projected per-test terminal states, at least five tests must actually execute, pending/skipped tests are not accepted in the required lane, failures cannot be represented as a clean run, and retry-recovered passes remain reliability failures.
+
+This distinction matters: a process can exit successfully while discovery or reporting has silently shrunk. Evidence validation is therefore a separate contract from Cypress's own exit code.
 
 ## Diagnostic privacy
 
@@ -112,11 +116,35 @@ The fixture uses loopback port `3100`. One Cypress process owns that fixture for
 
 If parallel Cypress processes are intentionally run on the same host, each must use an explicitly isolated target/port rather than silently sharing mutable fixture state.
 
+## Runtime and browser qualification
+
+The primary lane uses **Node 24.20.0 + Chrome**, representing the current-LTS execution contract. Extended coverage deliberately changes one dimension at a time:
+
+- **Node 24.20.0 + Firefox** changes browser engine while holding runtime constant;
+- **Node 22.23.2 + Chrome** changes runtime generation while holding the primary browser constant.
+
+This is more diagnostic than a small accidental matrix in which both browser and Node version change together. Additional combinations belong only when a known compatibility interaction or release criterion justifies them.
+
+npm **11.19.1** is installed and asserted exactly before dependency work in required Node lanes. The dependency graph is installed with lifecycle scripts disabled; Cypress's binary installation is then invoked explicitly as a reviewed side effect.
+
+## Workflow and supply-chain boundary
+
+Workflow dependencies are code. All external GitHub Actions are pinned to full immutable commit SHAs, and `config/workflowPins.selftest.js` scans every workflow so a future edit cannot silently replace that invariant with a mutable tag.
+
+Security remains independently attributable:
+
+- CodeQL evaluates JavaScript/TypeScript source behavior;
+- npm Audit evaluates known advisories in the npm dependency graph;
+- Trivy evaluates repository dependency/configuration/secret findings;
+- Dependency Review evaluates PR dependency deltas when GitHub Dependency graph is available.
+
+These controls overlap by design but are not substitutes. The stable aggregate workflow conclusions are `ci / ci-gate`, `extended / extended-gate`, and `security / security-gate`.
+
 ## CI evidence boundary
 
-Primary CI validates configuration/reporter policy, verifies the Cypress binary, executes Chrome against the repository fixture, and retains run evidence. Extended CI executes Chrome and Firefox independently against the same deterministic contract.
+Primary CI validates configuration/reporter/evidence/workflow-pin policy, verifies the Cypress binary, executes Chrome against the repository fixture, validates the run manifest semantically, and retains bounded evidence. Extended CI repeats the governed contract across the isolated browser and maintenance-LTS dimensions.
 
-Each workflow has least-privilege permissions, concurrency cancellation, bounded job time, and an independent Trivy gate for vulnerability, misconfiguration, and committed-secret findings.
+Each workflow has least-privilege permissions, concurrency cancellation, bounded job time, explicit artifacts, and a stable aggregate conclusion so internal matrix evolution does not constantly change the external status interface.
 
 ## Extension rules
 
@@ -130,6 +158,8 @@ New framework behavior should:
 6. maintain test isolation and explicit session/intercept/clock ownership;
 7. construct retained evidence from reviewed allowlists rather than copying third-party result objects;
 8. sanitize and bound structured diagnostics before persistence;
-9. add zero-browser tests when config/reporter logic can be separated from the browser;
-10. add cross-origin infrastructure only for a real multi-origin requirement;
-11. classify deployed-environment tests separately from required framework CI.
+9. prove meaningful execution counts and terminal-state reconciliation rather than relying only on process success;
+10. add zero-browser tests when config/reporter/policy logic can be separated from the browser;
+11. add cross-origin infrastructure only for a real multi-origin requirement;
+12. classify deployed-environment tests separately from required framework CI;
+13. expand browser/runtime matrices only for attributable compatibility risk.

@@ -9,14 +9,15 @@ The Cypress layer proves browser-visible workflows while keeping framework polic
 | Layer | Runner | Target | Primary concern |
 | --- | --- | --- | --- |
 | Runtime contract | Node self-test | None | URL/timeout/correlation validation |
-| Reporter contract | Node self-test | None | Manifest mapping, redaction, bounds, allowlist |
-| Primary browser | Cypress Chrome + Node 22 | Local fixture | Critical navigation/authentication behavior |
+| Reporter/evidence contract | Node self-test | None | Manifest mapping, redaction, bounds, terminal-state reconciliation, execution floor |
+| Workflow supply-chain contract | Node self-test | Repository workflows | Full immutable Action SHA pinning |
+| Primary browser | Cypress Chrome + Node 24.20.0 | Local fixture | Current-LTS critical navigation/authentication behavior |
 | Native command/state | Cypress Chrome | Local fixture | Intercepts, aliases, tasks, sessions, timers |
-| Browser compatibility | Cypress Firefox + Node 22 | Local fixture | Alternate-browser risk |
-| Runtime compatibility | Cypress Chrome + Node 24 | Local fixture | Supported Node-major risk |
+| Browser compatibility | Cypress Firefox + Node 24.20.0 | Local fixture | Alternate-browser risk with runtime held constant |
+| Runtime compatibility | Cypress Chrome + Node 22.23.2 | Local fixture | Maintenance-LTS risk with browser held constant |
 | Controlled dependency | Cypress + `cy.intercept()` | Local/selected target | Explicit dependency condition |
 | Environment integration | Cypress | Explicit `CYPRESS_BASE_URL` | Deployed-system contract |
-| Security | CodeQL + Trivy + Dependency Review | Repository / PR delta | SAST, dependency/configuration/secret risk, newly introduced dependency risk |
+| Security | CodeQL + npm Audit + Trivy + Dependency Review | Repository / dependency graph / PR delta | Source, advisory, configuration/secret, and newly introduced dependency risk |
 
 ## Deterministic default target
 
@@ -36,7 +37,7 @@ Those concerns belong to an explicit deployed-environment layer, not framework c
 
 Runtime self-tests reject relative URLs, URL credentials, query/fragment-bearing targets, explicit target port `0`, non-positive timeout budgets, unsafe correlation tokens, and overlong run IDs. Text inputs are normalized once at the runtime boundary.
 
-`npm run config:check` also verifies run-reporting behavior and config loading before Cypress binary/browser execution. CI installs the locked dependency graph with lifecycle scripts disabled, then explicitly invokes the Cypress binary installer as the only required installation side effect.
+`npm run config:check` also verifies run-reporting behavior, evidence policy, Cypress config loading, and immutable workflow Action pins before Cypress binary/browser execution. CI installs the locked dependency graph with lifecycle scripts disabled, then explicitly invokes the Cypress binary installer as the only required installation side effect.
 
 ## Native command/state coverage
 
@@ -95,11 +96,21 @@ The deterministic committed fixture remains single-origin. If a real product flo
 
 Do not introduce `cy.origin()` or a public remote origin merely to increase feature breadth. The capability belongs only when the product owns a real multi-origin requirement.
 
-## Retry policy
+## Retry and evidence policy
 
 Run-mode retries are capped. A retry-only pass is a reliability defect signal and should be classified. Retry count must not be increased to compensate for weak selectors, public-network variability, or missing readiness conditions.
 
-Both primary and compatibility workflows run `config/retryPolicy.js` after Cypress. The gate rejects missing/zero-test manifests, inconsistent totals, terminal failures represented as clean evidence, and tests that only become green after retry. Retried success is evidence for triage, not a production-readiness waiver.
+Both primary and compatibility workflows run `config/retryPolicy.js` after Cypress. A required run must satisfy all of the following:
+
+- the manifest contains runs and projected test records;
+- top-level test totals equal the projected test count;
+- passed, failed, pending, and skipped totals reconcile with per-test terminal states;
+- at least **five tests actually execute** (`passed + failed`), matching the current required-suite floor;
+- required lanes contain no pending or skipped tests;
+- terminal failures cannot be represented as clean evidence;
+- retry-recovered passes remain failures.
+
+This floor is intentionally stronger than “at least one test.” A suite that silently shrinks from five contracts to one has not preserved the same quality signal even if the remaining test passes.
 
 ## External environment policy
 
@@ -117,64 +128,72 @@ Inspect failures in this order:
 4. video for sequence/context;
 5. CI/bootstrap logs for runner/browser/fixture infrastructure.
 
-The manifest is an **allowlisted evidence projection**, not a serialized copy of Cypress's `after:run` result object. Required CI validates that it represents at least one executed and passed test before retaining it as evidence. It retains only reviewed browser/platform/runtime labels, normalized totals, per-spec allowlisted stats, and bounded/redacted test state. Unknown properties from Cypress result objects are discarded by default. Non-finite/negative numeric values are normalized rather than persisted as arbitrary runtime data.
+The manifest is an **allowlisted evidence projection**, not a serialized copy of Cypress's `after:run` result object. It retains only reviewed browser/platform/runtime labels, normalized totals, per-spec allowlisted stats, and bounded/redacted test state. Unknown properties from Cypress result objects are discarded by default. Non-finite/negative numeric values are normalized rather than persisted as arbitrary runtime data.
 
 Structured evidence removes URL credentials/query/fragment and redacts common credential/token assignments. Screenshots/video can still contain visible data and must use synthetic/controlled inputs.
+
+Stable status interfaces are `ci / ci-gate`, `extended / extended-gate`, and `security / security-gate`. Matrix internals can evolve without forcing every consumer to track individual job names.
 
 ## Security strategy
 
 Security is an independent failure domain and is not retried as browser flakiness:
 
 - CodeQL performs JavaScript/TypeScript SAST with the extended query suite;
+- npm Audit gates known HIGH/CRITICAL advisories in the installed lockfile graph and retains JSON evidence;
 - Trivy scans the repository filesystem for fixed HIGH/CRITICAL dependency findings, supported HIGH/CRITICAL misconfiguration findings, and committed secret findings;
 - GitHub Dependency Review evaluates pull-request dependency deltas when the repository Dependency graph is available.
 
-If GitHub Dependency graph is unavailable, the workflow records that limitation. Trivy remains a required whole-repository gate but is not represented as equivalent to change-aware dependency-diff analysis.
+If GitHub Dependency graph is unavailable, the workflow records that limitation. npm Audit and Trivy remain independent required gates but are not represented as equivalent to change-aware dependency-diff analysis.
 
 ## Failure classification
 
 | Failure class | First interpretation |
 | --- | --- |
 | Runtime self-test | Configuration-policy regression |
-| Reporter self-test | Evidence/privacy/schema-allowlist regression |
+| Reporter/evidence self-test | Evidence/privacy/schema/reconciliation regression |
+| Workflow-pin self-test | Mutable executable CI dependency introduced |
 | Fixture startup/connection | Repository fixture lifecycle/port ownership |
 | Cypress verify/startup | Runner/browser infrastructure |
 | Intercept/session/task/clock contract | Native command/state ownership |
 | Navigation failure | HTTP/page-load/application route boundary |
 | Selector timeout | UI ownership/readiness |
 | Authentication negative mismatch | Rejection/error semantics |
-| Firefox-only failure | Browser compatibility |
-| Node-24/Chrome-only failure | Runtime compatibility |
+| Firefox-only failure | Browser compatibility on current LTS |
+| Node-22/Chrome-only failure | Maintenance-LTS runtime compatibility |
 | Retry-only pass | Reliability/flakiness |
-| Repository security | Source/dependency/configuration/secret risk |
+| Execution-floor/count mismatch | Discovery, disabled-test, or reporter-integrity regression |
+| CodeQL | Source-level security defect |
+| npm Audit | Known npm dependency advisory |
+| Trivy | Dependency/configuration/secret risk |
 | Dependency Review | Newly introduced dependency risk or unavailable GitHub Dependency graph |
 | Explicit external target failure | Environment/integration first, framework second |
 
 ## Browser and runtime coverage
 
-The fast required CI lane is Node 22 + Chrome. Extended compatibility deliberately tests independent risk axes rather than a redundant Cartesian matrix:
+The fast required CI lane is **Node 24.20.0 + Chrome**. Extended compatibility deliberately tests independent risk axes rather than a redundant Cartesian matrix:
 
-- Node 22 + Firefox qualifies alternate-browser behavior;
-- Node 24 + Chrome qualifies the newer supported Node runtime while holding the primary browser constant.
+- **Node 24.20.0 + Firefox** qualifies alternate-browser behavior while holding the current-LTS runtime constant;
+- **Node 22.23.2 + Chrome** qualifies the maintenance-LTS runtime while holding the primary browser constant.
 
-Add more browser/runtime combinations only for known compatibility risk or release criteria. If a defect suggests an interaction between two dimensions, add that combination intentionally rather than multiplying all cases mechanically.
+npm **11.19.1** is installed and verified exactly in both runtime generations. Add more browser/runtime combinations only for known compatibility risk or release criteria. If a defect suggests an interaction between two dimensions, add that combination intentionally rather than multiplying all cases mechanically.
 
 ## Exit criteria
 
 A UI/framework change is ready when:
 
-- runtime and reporter self-tests pass;
-- Cypress configuration loads cleanly;
+- runtime, reporter/evidence, workflow-pin, and Cypress configuration self-tests pass;
 - correlation/runtime inputs and explicit port `0` fail closed before browser startup;
 - custom commands preserve native chain semantics;
 - session/intercept/timer capability contracts pass;
 - the repository fixture starts and stops cleanly;
-- Chrome on Node 22 passes the deterministic primary browser contract;
-- Firefox on Node 22 passes when the compatibility workflow applies;
-- Chrome on Node 24 passes when the compatibility workflow applies;
+- Chrome on Node 24.20.0 passes the deterministic primary browser contract;
+- Firefox on Node 24.20.0 passes when the browser-compatibility workflow applies;
+- Chrome on Node 22.23.2 passes when the maintenance-LTS workflow applies;
+- the run manifest proves at least five executed tests, reconciled terminal-state counts, and zero pending/skipped cases;
 - retry-recovered passes remain failing reliability signals;
 - no fixed wait or hidden retry workaround is introduced;
 - changed selectors remain stable and application-owned;
 - structured evidence remains privacy-aware, bounded, numeric-safe, and explicitly allowlisted;
-- CodeQL and Trivy security gates pass, and Dependency Review runs when GitHub Dependency graph is available;
+- npm 11.19.1 is verified exactly before dependency work;
+- CodeQL, npm Audit, and Trivy security gates pass, and Dependency Review runs when GitHub Dependency graph is available;
 - any external-target behavior is explicitly classified and documented.

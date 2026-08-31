@@ -23,6 +23,9 @@ concurrency:
   group: cypress-extended-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  NPM_VERSION: 11.19.1
+
 jobs:
   compatibility:
     name: ${{ matrix.lane }} · Node ${{ matrix.node }} · ${{ matrix.browser }}
@@ -33,10 +36,10 @@ jobs:
       matrix:
         include:
           - lane: browser-compatibility
-            node: 22
+            node: 24.20.0
             browser: firefox
-          - lane: runtime-compatibility
-            node: 24
+          - lane: maintenance-lts-runtime
+            node: 22.23.2
             browser: chrome
     env:
       CYPRESS_BASE_URL: http://127.0.0.1:3100
@@ -49,12 +52,17 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - name: Pin npm toolchain
-        run: npm install --global npm@11.19.1 --no-audit --no-fund
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global "npm@${NPM_VERSION}" --ignore-scripts --no-audit --no-fund
+          [[ "$(npm --version)" == "$NPM_VERSION" ]]
       - name: Install locked dependencies without lifecycle scripts
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Install the explicitly approved Cypress binary
         run: npm run cypress:install
-      - run: npm run config:check
+      - name: Validate framework and workflow contracts
+        run: npm run config:check
       - run: npm run cypress:verify
       - name: Run Cypress in ${{ matrix.browser }} against repository-owned fixture
         run: npm run test:${{ matrix.browser }}
@@ -70,10 +78,9 @@ jobs:
             echo "- Run ID: \`${TEST_RUN_ID}\`"
             echo "- Browser: \`${{ matrix.browser }}\`"
             echo "- Node: \`${{ matrix.node }}\`"
+            echo "- npm: \`${NPM_VERSION}\` (exactly verified)"
             echo '- Target: repository-owned loopback fixture'
-            echo "- Job status: \`${{ job.status }}\`"
-            echo '- Dependencies: npm 11.19.1 + lockfile with lifecycle scripts disabled; Cypress binary installed explicitly'
-            echo '- Evidence: validated non-zero run manifest + failure screenshots/video'
+            echo '- Evidence: minimum five executed tests + reconciled manifest + failure screenshots/video'
             echo '- Flake policy: retry-recovered passes fail the gate'
           } | tee "reports/extended-node-${{ matrix.node }}-${{ matrix.browser }}/summary.md" >> "$GITHUB_STEP_SUMMARY"
       - name: Upload compatibility evidence
@@ -88,3 +95,18 @@ jobs:
             cypress/downloads/
           if-no-files-found: error
           retention-days: 14
+
+  extended-gate:
+    name: extended-gate
+    if: always()
+    needs: [compatibility]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Evaluate compatibility jobs
+        env:
+          COMPATIBILITY: ${{ needs.compatibility.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$COMPATIBILITY" == "success" ]] || { echo "compatibility=$COMPATIBILITY"; exit 1; }
