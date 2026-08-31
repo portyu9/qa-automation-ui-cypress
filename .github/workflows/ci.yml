@@ -28,12 +28,17 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: package-lock.json
-      - run: npm ci --no-audit --no-fund
+      - name: Pin npm toolchain
+        run: npm install --global npm@11.19.1 --no-audit --no-fund
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install the explicitly approved Cypress binary
+        run: npm run cypress:install
       - run: npm run config:check
       - run: npm run cypress:verify
       - name: Run Chrome E2E gate against repository-owned fixture
         run: npm run test:chrome
-      - name: Reject retry-recovered passes
+      - name: Validate meaningful Cypress evidence and reject retry-recovered passes
         run: node config/retryPolicy.js reports/run-manifest.json
       - name: Publish CI observability summary
         if: always()
@@ -60,7 +65,8 @@ jobs:
             echo "- Run ID: \`${TEST_RUN_ID}\`"
             echo "- Job status: \`${JOB_STATUS}\`"
             echo '- Target: repository-owned loopback fixture'
-            echo '- Evidence: run manifest + screenshots/video + CI observability envelope'
+            echo '- Dependencies: npm 11.19.1 + lockfile with lifecycle scripts disabled; Cypress binary installed explicitly'
+            echo '- Evidence: validated non-zero run manifest + failure screenshots/video + CI observability envelope'
             echo '- Flake policy: retry-recovered passes fail the gate'
           } | tee reports/ci-summary.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload Cypress evidence
@@ -73,5 +79,5 @@ jobs:
             cypress/screenshots/
             cypress/videos/
             cypress/downloads/
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 14
