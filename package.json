@@ -6,6 +6,9 @@
   "engines": {
     "node": ">=22"
   },
+  "allowScripts": {
+    "cypress": true
+  },
   "scripts": {
     "test": "cypress run",
     "test:chrome": "cypress run --browser chrome",
