@@ -79,7 +79,7 @@ flowchart LR
 | Sensitive input | Password operations suppress Cypress command logging. |
 | Negative behavior | Rejection/error semantics are first-class executable contracts. |
 | Retries | Bounded run-mode retries are diagnostics, not the definition of correctness. |
-| Evidence | `after:run` writes an atomic privacy-aware run manifest. |
+| Evidence | `after:run` writes an atomic privacy-aware run manifest; required lanes reject zero-test manifests and retry-recovered passes. |
 | Compatibility | Node 22 + Chrome is primary; Node 22 + Firefox and Node 24 + Chrome are independent compatibility signals. |
 | Security | CodeQL, Trivy, and change-aware dependency review remain independent from browser-test retries. |
 
@@ -118,7 +118,8 @@ flowchart LR
 ## Quick start
 
 ```bash
-npm ci
+npm ci --ignore-scripts
+npm run cypress:install
 npm run config:check
 npm run cypress:verify
 npm run test:chrome
@@ -217,7 +218,7 @@ Modern Cypress requires `cy.origin()` when commands in a single test must execut
 
 ## Evidence and CI
 
-Cypress-native screenshots/video remain authoritative. `config/runReporter.js` adds a compact run-level manifest, while CI emits run ID, browser, Node runtime, commit/ref, target class, and final status.
+Cypress-native screenshots/video remain authoritative. `config/runReporter.js` adds a compact run-level manifest, while CI emits run ID, browser, Node runtime, commit/ref, target class, and final status. Required lanes independently reject missing/zero-test manifests before artifact upload, so a green uploader cannot substitute for executed browser work.
 
 Primary CI runs Node 22 + Chrome after runtime/reporter checks and Cypress binary verification. `extended.yml` qualifies independent risk axes with Node 22 + Firefox for browser compatibility and Node 24 + Chrome for runtime compatibility. All browser lanes reject retry-recovered passes rather than normalizing them as green.
 
@@ -229,7 +230,7 @@ Generic evidence must not retain credentials, raw authorization headers, cookies
 
 If GitHub Dependency graph is unavailable, the workflow records that limitation and Trivy remains a required whole-repository gate. Trivy is not represented as equivalent to change-aware dependency-diff analysis. Security failures are separate from browser flakiness and must not be made green by increasing Cypress retries.
 
-GitHub Actions used by required workflows are pinned to immutable commit identities. The npm lockfile, Cypress binary verification, CodeQL, Trivy, and dependency-diff review cover different supply-chain failure modes and are intentionally not treated as substitutes.
+GitHub Actions used by required workflows are pinned to immutable commit identities. The npm lockfile, lifecycle-script-disabled dependency installation, explicit Cypress binary installation, Cypress binary verification, CodeQL, Trivy, and dependency-diff review cover different supply-chain failure modes and are intentionally not treated as substitutes. CI pins npm 11.19.1 so package-manager behavior is consistent across the Node 22 and Node 24 lanes.
 
 ## Dependency maintenance
 
@@ -239,7 +240,7 @@ Dependabot maintains **npm** and **GitHub Actions**.
 - grouped minor/patch updates reduce low-risk PR noise;
 - majors remain standalone to isolate Cypress/Node/API compatibility changes;
 - Actions are reviewed as executable dependencies;
-- automated updates still require runtime self-tests, primary Chrome coverage, applicable Firefox/Node-24 compatibility coverage, security, and docs gates.
+- automated updates are evaluated by runtime self-tests, primary Chrome coverage, applicable Firefox/Node-24 compatibility coverage, security, and docs workflows.
 
 Automation proposes a change; deterministic browser/runtime evidence and release-impact review decide whether it is safe.
 

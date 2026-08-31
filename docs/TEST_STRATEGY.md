@@ -36,7 +36,7 @@ Those concerns belong to an explicit deployed-environment layer, not framework c
 
 Runtime self-tests reject relative URLs, URL credentials, query/fragment-bearing targets, explicit target port `0`, non-positive timeout budgets, unsafe correlation tokens, and overlong run IDs. Text inputs are normalized once at the runtime boundary.
 
-`npm run config:check` also verifies run-reporting behavior and config loading before Cypress binary/browser execution.
+`npm run config:check` also verifies run-reporting behavior and config loading before Cypress binary/browser execution. CI installs the locked dependency graph with lifecycle scripts disabled, then explicitly invokes the Cypress binary installer as the only required installation side effect.
 
 ## Native command/state coverage
 
@@ -99,7 +99,7 @@ Do not introduce `cy.origin()` or a public remote origin merely to increase feat
 
 Run-mode retries are capped. A retry-only pass is a reliability defect signal and should be classified. Retry count must not be increased to compensate for weak selectors, public-network variability, or missing readiness conditions.
 
-Both primary and compatibility workflows run `config/retryPolicy.js` after Cypress and fail when a test only becomes green after retry. Retried success is evidence for triage, not a production-readiness waiver.
+Both primary and compatibility workflows run `config/retryPolicy.js` after Cypress. The gate rejects missing/zero-test manifests, inconsistent totals, terminal failures represented as clean evidence, and tests that only become green after retry. Retried success is evidence for triage, not a production-readiness waiver.
 
 ## External environment policy
 
@@ -117,7 +117,7 @@ Inspect failures in this order:
 4. video for sequence/context;
 5. CI/bootstrap logs for runner/browser/fixture infrastructure.
 
-The manifest is an **allowlisted evidence projection**, not a serialized copy of Cypress's `after:run` result object. It retains only reviewed browser/platform/runtime labels, normalized totals, per-spec allowlisted stats, and bounded/redacted test state. Unknown properties from Cypress result objects are discarded by default. Non-finite/negative numeric values are normalized rather than persisted as arbitrary runtime data.
+The manifest is an **allowlisted evidence projection**, not a serialized copy of Cypress's `after:run` result object. Required CI validates that it represents at least one executed and passed test before retaining it as evidence. It retains only reviewed browser/platform/runtime labels, normalized totals, per-spec allowlisted stats, and bounded/redacted test state. Unknown properties from Cypress result objects are discarded by default. Non-finite/negative numeric values are normalized rather than persisted as arbitrary runtime data.
 
 Structured evidence removes URL credentials/query/fragment and redacts common credential/token assignments. Screenshots/video can still contain visible data and must use synthetic/controlled inputs.
 

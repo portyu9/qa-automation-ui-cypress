@@ -18,6 +18,24 @@ function retryRecoveredPasses(manifest) {
   return failures;
 }
 
+function assertMeaningfulRunManifest(manifest) {
+  const runs = Array.isArray(manifest?.runs) ? manifest.runs : [];
+  const tests = runs.flatMap((run) => (Array.isArray(run?.tests) ? run.tests : []));
+  const totalTests = Number(manifest?.totals?.tests);
+  const passed = Number(manifest?.totals?.passed);
+  const failed = Number(manifest?.totals?.failed);
+
+  if (runs.length === 0 || tests.length === 0 || !Number.isInteger(totalTests) || totalTests <= 0) {
+    throw new Error('Cypress run manifest contains zero executed tests');
+  }
+  if (totalTests !== tests.length) {
+    throw new Error(`Cypress run manifest total mismatch: totals.tests=${totalTests}, projectedTests=${tests.length}`);
+  }
+  if (!Number.isInteger(passed) || passed <= 0 || failed !== 0) {
+    throw new Error(`Cypress run manifest is not a clean executed run: passed=${passed}, failed=${failed}`);
+  }
+}
+
 function assertNoRetryRecoveredPasses(manifest) {
   const flaky = retryRecoveredPasses(manifest);
   if (flaky.length === 0) return;
@@ -29,8 +47,10 @@ function assertNoRetryRecoveredPasses(manifest) {
 }
 
 function readManifest(filePath) {
-  const raw = fs.readFileSync(filePath, 'utf8');
-  const parsed = JSON.parse(raw);
+  if (!fs.existsSync(filePath) || fs.statSync(filePath).size === 0) {
+    throw new Error(`Cypress run manifest is missing or empty: ${filePath}`);
+  }
+  const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
   if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.runs)) {
     throw new Error('Cypress run manifest must contain a runs array');
   }
@@ -40,8 +60,14 @@ function readManifest(filePath) {
 if (require.main === module) {
   const filePath = process.argv[2];
   if (!filePath) throw new Error('usage: node config/retryPolicy.js <run-manifest.json>');
-  assertNoRetryRecoveredPasses(readManifest(filePath));
-  console.log('Cypress retry policy: no retry-recovered passes');
+  const manifest = readManifest(filePath);
+  assertMeaningfulRunManifest(manifest);
+  assertNoRetryRecoveredPasses(manifest);
+  console.log(`Cypress evidence policy: tests=${manifest.totals.tests}, passed=${manifest.totals.passed}, no retry-recovered passes`);
 }
 
-module.exports = { assertNoRetryRecoveredPasses, retryRecoveredPasses };
+module.exports = {
+  assertMeaningfulRunManifest,
+  assertNoRetryRecoveredPasses,
+  retryRecoveredPasses,
+};
