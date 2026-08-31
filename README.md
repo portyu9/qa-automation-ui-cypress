@@ -20,18 +20,19 @@ A Cypress browser quality-engineering framework centered on **native command ret
 > [!IMPORTANT]
 > Required CI uses a repository-owned loopback application at `http://127.0.0.1:3100`. A deployed environment is selected explicitly with `CYPRESS_BASE_URL`; public-site availability is never part of the framework's definition of health.
 
-**Read by intent:** [capabilities](#capability-map) · [architecture](#architecture) · [quick start](#quick-start) · [native command surface](#native-command-queue-capability-surface) · [synchronization](#synchronization-model) · [network policy](#network-stubbing-policy) · [cross-origin policy](#cross-origin-policy) · [dependencies](#dependency-maintenance) · [triage](#failure-triage)
+**Read by intent:** [capabilities](#capability-map) · [architecture](#architecture) · [quick start](#quick-start) · [native command surface](#native-command-queue-capability-surface) · [synchronization](#synchronization-model) · [network policy](#network-stubbing-policy) · [cross-origin policy](#cross-origin-policy) · [security](#security-and-supply-chain) · [dependencies](#dependency-maintenance) · [triage](#failure-triage)
 
 ## Capability map
 
 | Plane | What it proves | Execution | Evidence |
 | --- | --- | --- | --- |
 | Runtime contract | Configuration/reporter policy | Node self-tests | Assertions + exit status |
-| Primary browser | Authentication acceptance/rejection and page transitions | Chrome + local fixture | Run manifest, screenshots, video |
+| Primary browser | Authentication acceptance/rejection and page transitions | Node 22 + Chrome + local fixture | Run manifest, screenshots, video |
 | Native command orchestration | Aliased interception, tasks, session caching/validation, request setup, deterministic clocks | Cypress command queue + local fixture | Native command/assertion output |
-| Extended browser | Compatibility | Chrome + Firefox | Independent per-browser evidence |
+| Browser compatibility | Alternate-browser behavior | Node 22 + Firefox | Independent browser evidence |
+| Runtime compatibility | Supported Node-major behavior | Node 24 + Chrome | Independent runtime evidence |
 | Controlled dependency | UI behavior under owned network conditions | `cy.intercept()` when justified | Native command/assertion output |
-| Security | Dependency/configuration exposure | Trivy filesystem scan | JSON + Markdown findings |
+| Security | SAST plus dependency/configuration/secret risk | CodeQL + Trivy + PR Dependency Review when available | Actions status + JSON security evidence |
 | Documentation | README/workflow/governance consistency | Repository-local validator | Actions status |
 
 ## Architecture
@@ -47,7 +48,7 @@ flowchart LR
     CYP --> NET[Intercept + alias contracts]
     CYP --> STATE[Session + clock contracts]
     CYP --> EV[Manifest · Screenshot · Video]
-    CHANGE --> EXT[Chrome + Firefox]
+    CHANGE --> EXT[Compatibility lanes]
     CHANGE --> SEC[Security]
     CHANGE --> DOCS[Docs contract]
 
@@ -79,7 +80,8 @@ flowchart LR
 | Negative behavior | Rejection/error semantics are first-class executable contracts. |
 | Retries | Bounded run-mode retries are diagnostics, not the definition of correctness. |
 | Evidence | `after:run` writes an atomic privacy-aware run manifest. |
-| Compatibility | Chrome is primary; Firefox is an independent risk signal. |
+| Compatibility | Node 22 + Chrome is primary; Node 22 + Firefox and Node 24 + Chrome are independent compatibility signals. |
+| Security | CodeQL, Trivy, and change-aware dependency review remain independent from browser-test retries. |
 
 ## Boundary decision guide
 
@@ -91,7 +93,8 @@ flowchart LR
 | Setup not under test? | `cy.request()` / API-state boundary | Avoid expensive UI setup |
 | Reusable authenticated/browser state? | `cy.session()` + validation | Cache state without weakening correctness |
 | Timer/expiry behavior? | `cy.clock()` + `cy.tick()` | Control time rather than sleeping |
-| Browser compatibility? | Extended matrix | Keep compatibility independently attributable |
+| Browser compatibility? | Extended Firefox lane | Hold runtime stable while changing browser |
+| Node runtime compatibility? | Extended Node 24 + Chrome lane | Hold browser stable while changing runtime |
 | Cross-origin browser flow? | `cy.origin()` when the product actually crosses origins | Cypress must explicitly switch origin execution context |
 | Real deployment behavior? | Explicit `CYPRESS_BASE_URL` | Separate environment from framework correctness |
 
@@ -125,7 +128,7 @@ python .github/scripts/validate_readme.py
 No application process is required for the default run; Cypress owns the fixture lifecycle.
 
 ```bash
-# compatibility
+# browser compatibility
 npm run test:firefox
 
 # explicit integration target
@@ -214,11 +217,19 @@ Modern Cypress requires `cy.origin()` when commands in a single test must execut
 
 ## Evidence and CI
 
-Cypress-native screenshots/video remain authoritative. `config/runReporter.js` adds a compact run-level manifest, while CI emits run ID, browser, commit/ref, target class, and final status.
+Cypress-native screenshots/video remain authoritative. `config/runReporter.js` adds a compact run-level manifest, while CI emits run ID, browser, Node runtime, commit/ref, target class, and final status.
 
-Primary CI runs Chrome after runtime/reporter checks and Cypress binary verification. `extended.yml` runs Chrome and Firefox independently. Security and docs gates remain separate failure domains.
+Primary CI runs Node 22 + Chrome after runtime/reporter checks and Cypress binary verification. `extended.yml` qualifies independent risk axes with Node 22 + Firefox for browser compatibility and Node 24 + Chrome for runtime compatibility. All browser lanes reject retry-recovered passes rather than normalizing them as green.
 
 Generic evidence must not retain credentials, raw authorization headers, cookies, or arbitrary response payloads.
+
+## Security and supply chain
+
+`security.yml` runs three independent control planes: CodeQL JavaScript/TypeScript SAST; Trivy HIGH/CRITICAL repository dependency/configuration/secret scanning; and pull-request Dependency Review when GitHub Dependency graph is available.
+
+If GitHub Dependency graph is unavailable, the workflow records that limitation and Trivy remains a required whole-repository gate. Trivy is not represented as equivalent to change-aware dependency-diff analysis. Security failures are separate from browser flakiness and must not be made green by increasing Cypress retries.
+
+GitHub Actions used by required workflows are pinned to immutable commit identities. The npm lockfile, Cypress binary verification, CodeQL, Trivy, and dependency-diff review cover different supply-chain failure modes and are intentionally not treated as substitutes.
 
 ## Dependency maintenance
 
@@ -228,9 +239,9 @@ Dependabot maintains **npm** and **GitHub Actions**.
 - grouped minor/patch updates reduce low-risk PR noise;
 - majors remain standalone to isolate Cypress/Node/API compatibility changes;
 - Actions are reviewed as executable dependencies;
-- automated updates still require runtime self-tests, Chrome/Firefox coverage where applicable, security, and docs gates.
+- automated updates still require runtime self-tests, primary Chrome coverage, applicable Firefox/Node-24 compatibility coverage, security, and docs gates.
 
-Dependabot, lockfiles, Cypress binary verification, and Trivy form complementary supply-chain controls rather than substitutes.
+Automation proposes a change; deterministic browser/runtime evidence and release-impact review decide whether it is safe.
 
 ## Failure triage
 
@@ -245,10 +256,14 @@ Dependabot, lockfiles, Cypress binary verification, and Trivy form complementary
 | Clock/timer mismatch | Application timing semantics |
 | Node task failure | Plugin-process boundary |
 | Invalid-login mismatch | Rejection/error semantics |
-| Browser-only failure | Compatibility |
+| Firefox-only failure | Browser compatibility |
+| Node-24/Chrome-only failure | Runtime compatibility |
 | Retry-only pass | Reliability defect |
 | External-target-only failure | Environment/integration first |
-| Security/docs | Independent repository governance |
+| CodeQL | Source-level security defect |
+| Trivy | Dependency/configuration/secret risk |
+| Dependency Review | Newly introduced dependency risk or unavailable Dependency graph |
+| Docs | Documentation/governance contract |
 
 ## Explicit anti-patterns
 
@@ -261,12 +276,14 @@ Dependabot, lockfiles, Cypress binary verification, and Trivy form complementary
 - hidden auth setup when authentication is under test;
 - real-time waits for deterministic timer behavior;
 - retries used to normalize unexplained flakiness;
-- credentials or arbitrary response bodies in generic evidence.
+- credentials or arbitrary response bodies in generic evidence;
+- treating a whole-repository vulnerability scan as equivalent to dependency-diff review;
+- multiplying browser/runtime matrices without a specific compatibility risk.
 
 ## Design references
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — runtime, fixture, runner, page, and evidence boundaries.
-- [`docs/TEST_STRATEGY.md`](docs/TEST_STRATEGY.md) — layer selection, browser policy, isolation, negative testing, and exit criteria.
+- [`docs/TEST_STRATEGY.md`](docs/TEST_STRATEGY.md) — layer selection, browser/runtime policy, isolation, negative testing, security, and exit criteria.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — change-quality expectations.
 
-A strong Cypress framework makes the failing boundary obvious: **runtime configuration, fixture lifecycle, command/network/state orchestration, navigation, browser compatibility, selector/readiness, application behavior, or explicit environment integration**.
+A strong Cypress framework makes the failing boundary obvious: **runtime configuration, fixture lifecycle, command/network/state orchestration, navigation, browser compatibility, Node runtime compatibility, selector/readiness, application behavior, security, or explicit environment integration**.
