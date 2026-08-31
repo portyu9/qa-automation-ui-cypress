@@ -98,7 +98,7 @@ const taskLog = compactTaskLog(
 );
 assert.equal(taskLog.includes('task-secret'), false);
 assert.equal(taskLog.includes('?token=private'), false);
-assert.equal(taskLog.includes('Bearer <redacted>'), true);
+assert.equal(taskLog.includes('Authorization=<redacted>'), true);
 assert.ok(taskLog.length <= 512);
 assert.equal(taskLog.endsWith('…<truncated>'), true);
 
