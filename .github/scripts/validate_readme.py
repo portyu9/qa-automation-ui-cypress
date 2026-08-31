@@ -11,6 +11,7 @@ WORKFLOW_BADGE_RE = re.compile(r"https://github\.com/[^/]+/[^/]+/actions/workflo
 STATIC_BADGE_RE = re.compile(r"https://img\.shields\.io/badge/[^\s)?]+-([0-9A-Fa-f]{6})(?:\?[^\s)]*)?")
 SECURITY_BADGE_RE = re.compile(r"https://img\.shields\.io/badge/Security-Policy-([0-9A-Fa-f]{6})")
 MERMAID_RE = re.compile(r"```mermaid\s*\n(.*?)```", re.DOTALL)
+REPOSITORY_MAP_RE = re.compile(r"## Repository map\s*\n\s*```text\n(.*?)```", re.DOTALL)
 MERMAID_ROOTS = ("flowchart", "graph", "sequenceDiagram", "classDiagram", "stateDiagram", "erDiagram", "journey", "gantt", "pie", "mindmap", "timeline", "quadrantChart", "xychart")
 
 def fail(message: str, errors: list[str]) -> None: errors.append(message)
@@ -44,13 +45,26 @@ def validate_mermaid(text: str, errors: list[str]) -> None:
         if not lines: fail(f"Mermaid block {index} is empty", errors)
         elif not lines[0].startswith(MERMAID_ROOTS): fail(f"Mermaid block {index} does not start with a recognized diagram declaration: {lines[0]!r}", errors)
 
+def validate_repository_map(text: str, errors: list[str]) -> None:
+    match = REPOSITORY_MAP_RE.search(text)
+    if not match:
+        fail("README repository map text block is missing", errors)
+        return
+    for line in match.group(1).splitlines():
+        entry = re.sub(r"^[│├└─\s]+", "", line.strip())
+        if not entry or entry == ".": continue
+        if not entry.endswith("/"):
+            fail(f"README repository map must contain directories only; found: {entry}", errors)
+
 def main() -> int:
     errors: list[str] = []
     if not README.is_file(): print("README contract failed: README.md is missing"); return 1
     for required in (ROOT / "LICENSE", ROOT / ".github" / "SECURITY.md"):
         if not required.is_file(): fail(f"required repository surface is missing: {required.relative_to(ROOT)}", errors)
     text = README.read_text(encoding="utf-8")
-    validate_local_links(text, errors); validate_workflow_badges(text, errors); validate_badge_palette(text, errors); validate_mermaid(text, errors)
+    validate_local_links(text, errors); validate_workflow_badges(text, errors); validate_badge_palette(text, errors); validate_mermaid(text, errors); validate_repository_map(text, errors)
+    for gate in ("`ci / ci-gate`", "`extended / extended-gate`", "`security / security-gate`"):
+        if gate not in text.lower(): fail(f"README must document stable aggregate status {gate}", errors)
     if errors:
         print("README contract failed:")
         for error in errors: print(f"- {error}")
