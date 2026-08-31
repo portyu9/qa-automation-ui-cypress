@@ -24,21 +24,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  cross-browser:
+  compatibility:
+    name: ${{ matrix.lane }} · Node ${{ matrix.node }} · ${{ matrix.browser }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        browser: [chrome, firefox]
+        include:
+          - lane: browser-compatibility
+            node: 22
+            browser: firefox
+          - lane: runtime-compatibility
+            node: 24
+            browser: chrome
     env:
       CYPRESS_BASE_URL: http://127.0.0.1:3100
-      TEST_RUN_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.browser }}
+      TEST_RUN_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}-node${{ matrix.node }}-${{ matrix.browser }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: 22
+          node-version: ${{ matrix.node }}
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci --no-audit --no-fund
@@ -48,26 +55,26 @@ jobs:
         run: npm run test:${{ matrix.browser }}
       - name: Reject retry-recovered passes
         run: node config/retryPolicy.js reports/run-manifest.json
-      - name: Publish browser observability summary
+      - name: Publish compatibility observability summary
         if: always()
         run: |
-          mkdir -p "reports/extended-${{ matrix.browser }}"
+          mkdir -p "reports/extended-node-${{ matrix.node }}-${{ matrix.browser }}"
           {
-            echo "### Cypress · ${{ matrix.browser }}"
+            echo "### Cypress · ${{ matrix.lane }}"
             echo
             echo "- Run ID: \`${TEST_RUN_ID}\`"
             echo "- Browser: \`${{ matrix.browser }}\`"
-            echo "- Node: \`22\`"
+            echo "- Node: \`${{ matrix.node }}\`"
             echo '- Target: repository-owned loopback fixture'
             echo "- Job status: \`${{ job.status }}\`"
-            echo "- Evidence: run manifest + screenshots + video"
+            echo '- Evidence: run manifest + screenshots + video'
             echo '- Flake policy: retry-recovered passes fail the gate'
-          } | tee "reports/extended-${{ matrix.browser }}/summary.md" >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload cross-browser evidence
+          } | tee "reports/extended-node-${{ matrix.node }}-${{ matrix.browser }}/summary.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload compatibility evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: cypress-${{ matrix.browser }}-extended-evidence
+          name: cypress-node-${{ matrix.node }}-${{ matrix.browser }}-extended-evidence
           path: |
             reports/
             cypress/screenshots/
