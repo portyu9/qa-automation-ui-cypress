@@ -118,14 +118,14 @@ If parallel Cypress processes are intentionally run on the same host, each must 
 
 ## Runtime and browser qualification
 
-The primary lane uses **Node 24.20.0 + Chrome**, representing the current-LTS execution contract. Extended coverage deliberately changes one dimension at a time:
+The primary lane uses **Node + Chrome**, representing the current-LTS execution contract. Extended coverage deliberately changes one dimension at a time:
 
-- **Node 24.20.0 + Firefox** changes browser engine while holding runtime constant;
-- **Node 22.23.2 + Chrome** changes runtime generation while holding the primary browser constant.
+- **Node + Firefox** changes browser engine while holding runtime constant;
+- **Node + Chrome** changes runtime generation while holding the primary browser constant.
 
 This is more diagnostic than a small accidental matrix in which both browser and Node version change together. Additional combinations belong only when a known compatibility interaction or release criterion justifies them.
 
-npm **11.19.1** is installed and asserted exactly before dependency work in required Node lanes. The dependency graph is installed with lifecycle scripts disabled; Cypress's binary installation is then invoked explicitly as a reviewed side effect.
+npm is installed and asserted exactly before dependency work in required Node lanes. The dependency graph is installed with lifecycle scripts disabled; Cypress's binary installation is then invoked explicitly as a reviewed side effect.
 
 ## Workflow and supply-chain boundary
 

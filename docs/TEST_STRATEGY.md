@@ -11,10 +11,10 @@ The Cypress layer proves browser-visible workflows while keeping framework polic
 | Runtime contract | Node self-test | None | URL/timeout/correlation validation |
 | Reporter/evidence contract | Node self-test | None | Manifest mapping, redaction, bounds, terminal-state reconciliation, execution floor |
 | Workflow supply-chain contract | Node self-test | Repository workflows | Full immutable Action SHA pinning |
-| Primary browser | Cypress Chrome + Node 24.20.0 | Local fixture | Current-LTS critical navigation/authentication behavior |
+| Primary browser | Cypress Chrome + Node | Local fixture | Current-LTS critical navigation/authentication behavior |
 | Native command/state | Cypress Chrome | Local fixture | Intercepts, aliases, tasks, sessions, timers |
-| Browser compatibility | Cypress Firefox + Node 24.20.0 | Local fixture | Alternate-browser risk with runtime held constant |
-| Runtime compatibility | Cypress Chrome + Node 22.23.2 | Local fixture | Maintenance-LTS risk with browser held constant |
+| Browser compatibility | Cypress Firefox + Node | Local fixture | Alternate-browser risk with runtime held constant |
+| Runtime compatibility | Cypress Chrome + Node | Local fixture | Maintenance-LTS risk with browser held constant |
 | Controlled dependency | Cypress + `cy.intercept()` | Local/selected target | Explicit dependency condition |
 | Environment integration | Cypress | Explicit `CYPRESS_BASE_URL` | Deployed-system contract |
 | Security | CodeQL + npm Audit + Trivy + Dependency Review | Repository / dependency graph / PR delta | Source, advisory, configuration/secret, and newly introduced dependency risk |
@@ -170,12 +170,12 @@ If GitHub Dependency graph is unavailable, the workflow records that limitation.
 
 ## Browser and runtime coverage
 
-The fast required CI lane is **Node 24.20.0 + Chrome**. Extended compatibility deliberately tests independent risk axes rather than a redundant Cartesian matrix:
+The fast required CI lane is **Node + Chrome**. Extended compatibility deliberately tests independent risk axes rather than a redundant Cartesian matrix:
 
-- **Node 24.20.0 + Firefox** qualifies alternate-browser behavior while holding the current-LTS runtime constant;
-- **Node 22.23.2 + Chrome** qualifies the maintenance-LTS runtime while holding the primary browser constant.
+- **Node + Firefox** qualifies alternate-browser behavior while holding the current-LTS runtime constant;
+- **Node + Chrome** qualifies the maintenance-LTS runtime while holding the primary browser constant.
 
-npm **11.19.1** is installed and verified exactly in both runtime generations. Add more browser/runtime combinations only for known compatibility risk or release criteria. If a defect suggests an interaction between two dimensions, add that combination intentionally rather than multiplying all cases mechanically.
+npm is installed and verified exactly in both runtime generations. Add more browser/runtime combinations only for known compatibility risk or release criteria. If a defect suggests an interaction between two dimensions, add that combination intentionally rather than multiplying all cases mechanically.
 
 ## Exit criteria
 
@@ -186,14 +186,14 @@ A UI/framework change is ready when:
 - custom commands preserve native chain semantics;
 - session/intercept/timer capability contracts pass;
 - the repository fixture starts and stops cleanly;
-- Chrome on Node 24.20.0 passes the deterministic primary browser contract;
-- Firefox on Node 24.20.0 passes when the browser-compatibility workflow applies;
-- Chrome on Node 22.23.2 passes when the maintenance-LTS workflow applies;
+- Chrome on Node passes the deterministic primary browser contract;
+- Firefox on Node passes when the browser-compatibility workflow applies;
+- Chrome on Node passes when the maintenance-LTS workflow applies;
 - the run manifest proves at least five executed tests, reconciled terminal-state counts, and zero pending/skipped cases;
 - retry-recovered passes remain failing reliability signals;
 - no fixed wait or hidden retry workaround is introduced;
 - changed selectors remain stable and application-owned;
 - structured evidence remains privacy-aware, bounded, numeric-safe, and explicitly allowlisted;
-- npm 11.19.1 is verified exactly before dependency work;
+- npm is verified exactly before dependency work;
 - CodeQL, npm Audit, and Trivy security gates pass, and Dependency Review runs when GitHub Dependency graph is available;
 - any external-target behavior is explicitly classified and documented.
