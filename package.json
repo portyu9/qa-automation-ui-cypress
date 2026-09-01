@@ -18,7 +18,7 @@
     "test:login": "cypress run --spec cypress/e2e/login.cy.js",
     "cypress:open": "cypress open",
     "cypress:verify": "cypress verify",
-    "config:check": "node config/runtime.selftest.js && node config/runReporter.selftest.js && node config/cypressConfig.selftest.js && node config/retryPolicy.selftest.js && node config/workflowPins.selftest.js",
+    "config:check": "node config/runtime.selftest.js && node config/runReporter.selftest.js && node config/cypressConfig.selftest.js && node config/retryPolicy.selftest.js && node config/securityEvidence.selftest.js && node config/workflowPins.selftest.js && node fixture/server.selftest.js",
     "cypress:install": "cypress install"
   },
   "license": "MIT",

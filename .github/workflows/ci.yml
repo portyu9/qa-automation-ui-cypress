@@ -31,10 +31,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: package-lock.json
-      - name: Pin npm toolchain
+      - name: Pin and verify Node/npm toolchain
         shell: bash
         run: |
           set -euo pipefail
+          [[ "$(node --version)" == "v${NODE_VERSION}" ]]
           npm install --global "npm@${NPM_VERSION}" --ignore-scripts --no-audit --no-fund
           [[ "$(npm --version)" == "$NPM_VERSION" ]]
       - name: Install locked dependencies without lifecycle scripts
@@ -72,11 +73,11 @@ jobs:
             echo
             echo "- Run ID: \`${TEST_RUN_ID}\`"
             echo "- Job status: \`${JOB_STATUS}\`"
-            echo "- Node: \`${NODE_VERSION}\`"
+            echo "- Node: \`${NODE_VERSION}\` (exactly verified)"
             echo "- npm: \`${NPM_VERSION}\` (exactly verified)"
             echo '- Target: repository-owned loopback fixture'
             echo '- Dependencies: lockfile with lifecycle scripts disabled; Cypress binary installed explicitly'
-            echo '- Evidence: run/browser/target attribution + required spec identities + per-spec/global count reconciliation + minimum five executed tests + failure screenshots/video + CI observability envelope'
+            echo '- Evidence: run/browser/target/Cypress-version attribution + five named governed behaviors + per-spec/global count reconciliation + no disabled tests + failure screenshots/video + CI observability envelope'
             echo '- Flake policy: retry-recovered passes fail the gate'
           } | tee reports/ci-summary.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload Cypress evidence

@@ -1,12 +1,21 @@
 'use strict';
 
 const fs = require('node:fs');
+const path = require('node:path');
 
 const MIN_EXECUTED_TESTS = 5;
-const REQUIRED_SPECS = new Set([
-  'cypress/e2e/capabilities.cy.js',
-  'cypress/e2e/login.cy.js',
-]);
+const REQUIRED_SPEC_BEHAVIORS = Object.freeze({
+  'cypress/e2e/capabilities.cy.js': Object.freeze([
+    'coordinates intercept aliases, retryable DOM assertions, and node tasks',
+    'restores browser state through cy.session with an explicit validation contract',
+    'controls application timers deterministically with cy.clock and cy.tick',
+  ]),
+  'cypress/e2e/login.cy.js': Object.freeze([
+    'logs in with valid credentials',
+    'shows an error for invalid credentials',
+  ]),
+});
+const REQUIRED_SPECS = new Set(Object.keys(REQUIRED_SPEC_BEHAVIORS));
 const TERMINAL_STATES = new Set(['passed', 'failed', 'pending', 'skipped']);
 
 function retryRecoveredPasses(manifest) {
@@ -43,6 +52,19 @@ function normalizeBrowser(value) {
   return requiredText(value, 'browser.name').toLowerCase();
 }
 
+function leafTitle(value) {
+  return requiredText(value, 'test.title').split(' > ').at(-1);
+}
+
+function lockedCypressVersion(filePath = path.join(process.cwd(), 'package-lock.json')) {
+  const lock = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  if (lock?.lockfileVersion !== 3 || !lock?.packages || typeof lock.packages !== 'object') {
+    throw new Error('package-lock.json must use lockfileVersion 3 with a packages map');
+  }
+  requiredText(lock.packages['']?.devDependencies?.cypress, 'locked root Cypress declaration');
+  return requiredText(lock.packages['node_modules/cypress']?.version, 'locked Cypress version');
+}
+
 function assertRunIdentity(manifest, expected = {}) {
   if (manifest?.schemaVersion !== 1) {
     throw new Error(`Cypress run manifest schemaVersion must be 1: ${manifest?.schemaVersion}`);
@@ -54,7 +76,7 @@ function assertRunIdentity(manifest, expected = {}) {
   requiredText(manifest?.browser?.version, 'browser.version');
   requiredText(manifest?.platform?.name, 'platform.name');
   requiredText(manifest?.platform?.version, 'platform.version');
-  requiredText(manifest?.cypressVersion, 'cypressVersion');
+  const cypressVersion = requiredText(manifest?.cypressVersion, 'cypressVersion');
 
   if (expected.runId && runId !== expected.runId) {
     throw new Error(`Cypress run manifest runId mismatch: expected=${expected.runId}, actual=${runId}`);
@@ -68,6 +90,26 @@ function assertRunIdentity(manifest, expected = {}) {
     throw new Error(
       `Cypress run manifest browser mismatch: expected=${expected.browser}, actual=${browser}`
     );
+  }
+  if (expected.cypressVersion && cypressVersion !== String(expected.cypressVersion)) {
+    throw new Error(
+      `Cypress run manifest version mismatch: expected=${expected.cypressVersion}, actual=${cypressVersion}`
+    );
+  }
+}
+
+function assertGovernedBehaviors(runsBySpec) {
+  for (const [spec, requiredBehaviors] of Object.entries(REQUIRED_SPEC_BEHAVIORS)) {
+    const run = runsBySpec.get(spec);
+    if (!run) {
+      throw new Error(`Cypress required spec evidence is missing: ${spec}`);
+    }
+    const observed = new Set((run.tests || []).map((test) => leafTitle(test.title)));
+    for (const behavior of requiredBehaviors) {
+      if (!observed.has(behavior)) {
+        throw new Error(`Cypress governed behavior evidence is missing from ${spec}: ${behavior}`);
+      }
+    }
   }
 }
 
@@ -87,6 +129,7 @@ function assertMeaningfulRunManifest(manifest, expected = {}) {
   }
 
   const specNames = new Set();
+  const runsBySpec = new Map();
   const aggregate = { tests: 0, passed: 0, failed: 0, pending: 0, skipped: 0 };
 
   for (const run of runs) {
@@ -95,6 +138,7 @@ function assertMeaningfulRunManifest(manifest, expected = {}) {
       throw new Error(`Cypress run manifest contains duplicate spec evidence: ${spec}`);
     }
     specNames.add(spec);
+    runsBySpec.set(spec, run);
 
     const tests = Array.isArray(run?.tests) ? run.tests : [];
     const stats = run?.stats ?? {};
@@ -148,6 +192,7 @@ function assertMeaningfulRunManifest(manifest, expected = {}) {
       throw new Error(`Cypress required spec evidence is missing: ${requiredSpec}`);
     }
   }
+  assertGovernedBehaviors(runsBySpec);
 
   const expectedTotals = { tests: totalTests, passed, failed, pending, skipped };
   for (const key of Object.keys(aggregate)) {
@@ -212,19 +257,22 @@ if (require.main === module) {
     runId: process.env.TEST_RUN_ID,
     baseUrl: process.env.CYPRESS_BASE_URL,
     browser: process.env.CYPRESS_EXPECTED_BROWSER,
+    cypressVersion: lockedCypressVersion(),
   });
   assertNoRetryRecoveredPasses(manifest);
   const executed = Number(manifest.totals.passed) + Number(manifest.totals.failed);
   console.log(
-    `Cypress evidence policy: browser=${manifest.browser.name}, specs=${manifest.runs.length}, executed=${executed}, passed=${manifest.totals.passed}, pending=0, skipped=0, no retry-recovered passes`
+    `Cypress evidence policy: version=${manifest.cypressVersion}, browser=${manifest.browser.name}, specs=${manifest.runs.length}, executed=${executed}, governedBehaviors=5, passed=${manifest.totals.passed}, pending=0, skipped=0, no retry-recovered passes`
   );
 }
 
 module.exports = {
   MIN_EXECUTED_TESTS,
+  REQUIRED_SPEC_BEHAVIORS,
   REQUIRED_SPECS,
   assertMeaningfulRunManifest,
   assertNoRetryRecoveredPasses,
   assertRunIdentity,
+  lockedCypressVersion,
   retryRecoveredPasses,
 };
