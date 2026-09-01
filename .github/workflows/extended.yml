@@ -4,14 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    paths:
-      - "config/**"
-      - "fixture/**"
-      - "cypress/**"
-      - "cypress.config.js"
-      - "package.json"
-      - "package-lock.json"
-      - ".github/workflows/extended.yml"
   schedule:
     - cron: "59 7 * * 3"
   workflow_dispatch:
@@ -43,6 +35,7 @@ jobs:
             browser: chrome
     env:
       CYPRESS_BASE_URL: http://127.0.0.1:3100
+      CYPRESS_EXPECTED_BROWSER: ${{ matrix.browser }}
       TEST_RUN_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}-node${{ matrix.node }}-${{ matrix.browser }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -66,7 +59,7 @@ jobs:
       - run: npm run cypress:verify
       - name: Run Cypress in ${{ matrix.browser }} against repository-owned fixture
         run: npm run test:${{ matrix.browser }}
-      - name: Validate meaningful Cypress evidence and reject retry-recovered passes
+      - name: Validate attributable Cypress evidence and reject retry-recovered passes
         run: node config/retryPolicy.js reports/run-manifest.json
       - name: Publish compatibility observability summary
         if: always()
@@ -80,7 +73,7 @@ jobs:
             echo "- Node: \`${{ matrix.node }}\`"
             echo "- npm: \`${NPM_VERSION}\` (exactly verified)"
             echo '- Target: repository-owned loopback fixture'
-            echo '- Evidence: minimum five executed tests + reconciled manifest + failure screenshots/video'
+            echo '- Evidence: run/browser/target attribution + required spec identities + per-spec/global count reconciliation + minimum five executed tests + failure screenshots/video'
             echo '- Flake policy: retry-recovered passes fail the gate'
           } | tee "reports/extended-node-${{ matrix.node }}-${{ matrix.browser }}/summary.md" >> "$GITHUB_STEP_SUMMARY"
       - name: Upload compatibility evidence
