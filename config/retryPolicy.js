@@ -3,6 +3,10 @@
 const fs = require('node:fs');
 
 const MIN_EXECUTED_TESTS = 5;
+const REQUIRED_SPECS = new Set([
+  'cypress/e2e/capabilities.cy.js',
+  'cypress/e2e/login.cy.js',
+]);
 const TERMINAL_STATES = new Set(['passed', 'failed', 'pending', 'skipped']);
 
 function retryRecoveredPasses(manifest) {
@@ -29,9 +33,48 @@ function integerCount(value, label) {
   return count;
 }
 
-function assertMeaningfulRunManifest(manifest) {
+function requiredText(value, label) {
+  const text = String(value ?? '').trim();
+  if (!text) throw new Error(`Cypress run manifest ${label} must be non-empty`);
+  return text;
+}
+
+function normalizeBrowser(value) {
+  return requiredText(value, 'browser.name').toLowerCase();
+}
+
+function assertRunIdentity(manifest, expected = {}) {
+  if (manifest?.schemaVersion !== 1) {
+    throw new Error(`Cypress run manifest schemaVersion must be 1: ${manifest?.schemaVersion}`);
+  }
+
+  const runId = requiredText(manifest?.runId, 'runId');
+  const baseUrl = requiredText(manifest?.baseUrl, 'baseUrl');
+  const browser = normalizeBrowser(manifest?.browser?.name);
+  requiredText(manifest?.browser?.version, 'browser.version');
+  requiredText(manifest?.platform?.name, 'platform.name');
+  requiredText(manifest?.platform?.version, 'platform.version');
+  requiredText(manifest?.cypressVersion, 'cypressVersion');
+
+  if (expected.runId && runId !== expected.runId) {
+    throw new Error(`Cypress run manifest runId mismatch: expected=${expected.runId}, actual=${runId}`);
+  }
+  if (expected.baseUrl && baseUrl !== expected.baseUrl) {
+    throw new Error(
+      `Cypress run manifest baseUrl mismatch: expected=${expected.baseUrl}, actual=${baseUrl}`
+    );
+  }
+  if (expected.browser && browser !== String(expected.browser).toLowerCase()) {
+    throw new Error(
+      `Cypress run manifest browser mismatch: expected=${expected.browser}, actual=${browser}`
+    );
+  }
+}
+
+function assertMeaningfulRunManifest(manifest, expected = {}) {
+  assertRunIdentity(manifest, expected);
+
   const runs = Array.isArray(manifest?.runs) ? manifest.runs : [];
-  const tests = runs.flatMap((run) => (Array.isArray(run?.tests) ? run.tests : []));
   const totalTests = integerCount(manifest?.totals?.tests, 'totals.tests');
   const passed = integerCount(manifest?.totals?.passed, 'totals.passed');
   const failed = integerCount(manifest?.totals?.failed, 'totals.failed');
@@ -39,32 +82,78 @@ function assertMeaningfulRunManifest(manifest) {
   const skipped = integerCount(manifest?.totals?.skipped, 'totals.skipped');
   const executed = passed + failed;
 
-  if (runs.length === 0 || tests.length === 0 || totalTests === 0) {
+  if (runs.length === 0 || totalTests === 0) {
     throw new Error('Cypress run manifest contains zero discovered tests');
   }
-  if (totalTests !== tests.length) {
-    throw new Error(
-      `Cypress run manifest total mismatch: totals.tests=${totalTests}, projectedTests=${tests.length}`
-    );
-  }
-  if (totalTests !== passed + failed + pending + skipped) {
-    throw new Error(
-      `Cypress run manifest count mismatch: total=${totalTests}, passed=${passed}, failed=${failed}, pending=${pending}, skipped=${skipped}`
-    );
+
+  const specNames = new Set();
+  const aggregate = { tests: 0, passed: 0, failed: 0, pending: 0, skipped: 0 };
+
+  for (const run of runs) {
+    const spec = requiredText(run?.spec, 'run.spec');
+    if (specNames.has(spec)) {
+      throw new Error(`Cypress run manifest contains duplicate spec evidence: ${spec}`);
+    }
+    specNames.add(spec);
+
+    const tests = Array.isArray(run?.tests) ? run.tests : [];
+    const stats = run?.stats ?? {};
+    const runCounts = {
+      tests: integerCount(stats.tests, `${spec}.stats.tests`),
+      passed: integerCount(stats.passes, `${spec}.stats.passes`),
+      failed: integerCount(stats.failures, `${spec}.stats.failures`),
+      pending: integerCount(stats.pending, `${spec}.stats.pending`),
+      skipped: integerCount(stats.skipped, `${spec}.stats.skipped`),
+    };
+
+    if (runCounts.tests !== tests.length) {
+      throw new Error(
+        `Cypress spec test-count mismatch for ${spec}: stats=${runCounts.tests}, projected=${tests.length}`
+      );
+    }
+    if (
+      runCounts.tests !==
+      runCounts.passed + runCounts.failed + runCounts.pending + runCounts.skipped
+    ) {
+      throw new Error(`Cypress spec terminal counts do not reconcile for ${spec}`);
+    }
+
+    const projected = { passed: 0, failed: 0, pending: 0, skipped: 0 };
+    for (const test of tests) {
+      requiredText(test?.title, `${spec}.test.title`);
+      const state = String(test?.state ?? '');
+      if (!TERMINAL_STATES.has(state)) {
+        throw new Error(`Cypress run manifest contains unsupported test state: ${state || '<empty>'}`);
+      }
+      const attempts = integerCount(test?.attempts, `${spec}.test.attempts`);
+      if ((state === 'passed' || state === 'failed') && attempts < 1) {
+        throw new Error(`Cypress executed test must contain at least one attempt: ${spec}`);
+      }
+      projected[state] += 1;
+    }
+
+    for (const state of Object.keys(projected)) {
+      if (projected[state] !== runCounts[state]) {
+        throw new Error(
+          `Cypress spec ${state} mismatch for ${spec}: stats=${runCounts[state]}, projected=${projected[state]}`
+        );
+      }
+    }
+
+    for (const key of Object.keys(aggregate)) aggregate[key] += runCounts[key];
   }
 
-  const projected = { passed: 0, failed: 0, pending: 0, skipped: 0 };
-  for (const test of tests) {
-    const state = String(test?.state ?? '');
-    if (!TERMINAL_STATES.has(state)) {
-      throw new Error(`Cypress run manifest contains unsupported test state: ${state || '<empty>'}`);
+  for (const requiredSpec of REQUIRED_SPECS) {
+    if (!specNames.has(requiredSpec)) {
+      throw new Error(`Cypress required spec evidence is missing: ${requiredSpec}`);
     }
-    projected[state] += 1;
   }
-  for (const state of Object.keys(projected)) {
-    if (projected[state] !== { passed, failed, pending, skipped }[state]) {
+
+  const expectedTotals = { tests: totalTests, passed, failed, pending, skipped };
+  for (const key of Object.keys(aggregate)) {
+    if (aggregate[key] !== expectedTotals[key]) {
       throw new Error(
-        `Cypress run manifest ${state} mismatch: totals=${{ passed, failed, pending, skipped }[state]}, projected=${projected[state]}`
+        `Cypress aggregate ${key} mismatch: totals=${expectedTotals[key]}, runs=${aggregate[key]}`
       );
     }
   }
@@ -119,17 +208,23 @@ if (require.main === module) {
   const filePath = process.argv[2];
   if (!filePath) throw new Error('usage: node config/retryPolicy.js <run-manifest.json>');
   const manifest = readManifest(filePath);
-  assertMeaningfulRunManifest(manifest);
+  assertMeaningfulRunManifest(manifest, {
+    runId: process.env.TEST_RUN_ID,
+    baseUrl: process.env.CYPRESS_BASE_URL,
+    browser: process.env.CYPRESS_EXPECTED_BROWSER,
+  });
   assertNoRetryRecoveredPasses(manifest);
   const executed = Number(manifest.totals.passed) + Number(manifest.totals.failed);
   console.log(
-    `Cypress evidence policy: executed=${executed}, passed=${manifest.totals.passed}, pending=0, skipped=0, no retry-recovered passes`
+    `Cypress evidence policy: browser=${manifest.browser.name}, specs=${manifest.runs.length}, executed=${executed}, passed=${manifest.totals.passed}, pending=0, skipped=0, no retry-recovered passes`
   );
 }
 
 module.exports = {
   MIN_EXECUTED_TESTS,
+  REQUIRED_SPECS,
   assertMeaningfulRunManifest,
   assertNoRetryRecoveredPasses,
+  assertRunIdentity,
   retryRecoveredPasses,
 };
