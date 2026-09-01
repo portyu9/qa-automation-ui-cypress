@@ -1,7 +1,8 @@
-"""Validate repository README contracts without third-party dependencies."""
+"""Validate repository README and workflow contracts without third-party dependencies."""
 
 from __future__ import annotations
 
+import json
 import re
 from html import unescape
 from pathlib import Path
@@ -9,6 +10,7 @@ from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[2]
 README = ROOT / "README.md"
+PACKAGE_JSON = ROOT / "package.json"
 LOCAL_LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 WORKFLOW_BADGE_RE = re.compile(
     r"https://github\.com/[^/]+/[^/]+/actions/workflows/([^/]+)/badge\.svg"
@@ -128,8 +130,76 @@ def validate_stable_gates(text: str, errors: list[str]) -> None:
         workflow_text = workflow.read_text(encoding="utf-8")
         if not re.search(rf"^\s{{2}}{re.escape(gate)}:\s*$", workflow_text, re.MULTILINE):
             fail(f"workflow does not define stable aggregate job `{gate}`", errors)
+        if "pull_request:" not in workflow_text:
+            fail(f"workflow for `{gate}` must run on pull requests", errors)
         if gate not in lower:
             fail(f"README must document stable aggregate job `{gate}`", errors)
+
+
+def require_tokens(path: Path, tokens: tuple[str, ...], errors: list[str]) -> None:
+    if not path.is_file():
+        fail(f"required workflow surface is missing: {path.relative_to(ROOT)}", errors)
+        return
+    content = path.read_text(encoding="utf-8")
+    for token in tokens:
+        if token not in content:
+            fail(f"{path.relative_to(ROOT)} is missing required contract token: {token}", errors)
+
+
+def validate_workflow_contracts(errors: list[str]) -> None:
+    ci = ROOT / ".github" / "workflows" / "ci.yml"
+    extended = ROOT / ".github" / "workflows" / "extended.yml"
+    security = ROOT / ".github" / "workflows" / "security.yml"
+
+    require_tokens(
+        ci,
+        (
+            '[[ "$(node --version)" == "v${NODE_VERSION}" ]]',
+            "npm run config:check",
+            "node config/retryPolicy.js reports/run-manifest.json",
+        ),
+        errors,
+    )
+    require_tokens(
+        extended,
+        (
+            '[[ "$(node --version)" == "v${{ matrix.node }}" ]]',
+            "npm run config:check",
+            "node config/retryPolicy.js reports/run-manifest.json",
+        ),
+        errors,
+    )
+    require_tokens(
+        security,
+        (
+            "supply-chain-policy:",
+            "node config/workflowPins.selftest.js",
+            "node config/securityEvidence.js npm-audit reports/security/npm-audit.json",
+            "node config/securityEvidence.js trivy reports/security/trivy.json",
+            "TRIVY_INCLUDE_DEV_DEPS: \"true\"",
+            "needs: [supply-chain-policy, codeql, npm-audit, trivy, dependency-review]",
+        ),
+        errors,
+    )
+
+
+def validate_framework_check_surface(errors: list[str]) -> None:
+    if not PACKAGE_JSON.is_file():
+        fail("package.json is missing", errors)
+        return
+    package = json.loads(PACKAGE_JSON.read_text(encoding="utf-8"))
+    command = package.get("scripts", {}).get("config:check", "")
+    for required in (
+        "config/runtime.selftest.js",
+        "config/runReporter.selftest.js",
+        "config/cypressConfig.selftest.js",
+        "config/retryPolicy.selftest.js",
+        "config/securityEvidence.selftest.js",
+        "config/workflowPins.selftest.js",
+        "fixture/server.selftest.js",
+    ):
+        if required not in command:
+            fail(f"config:check must execute {required}", errors)
 
 
 def main() -> int:
@@ -147,13 +217,15 @@ def main() -> int:
     validate_mermaid(text, errors)
     validate_repository_map(text, errors)
     validate_stable_gates(text, errors)
+    validate_workflow_contracts(errors)
+    validate_framework_check_surface(errors)
     if errors:
-        print("README contract failed:")
+        print("README/workflow contract failed:")
         for error in errors:
             print(f"- {error}")
         return 1
     print(
-        "README contract: links, badges, Mermaid, directory-only map, and stable gates are consistent"
+        "README/workflow contract: links, badges, Mermaid, directory-only map, stable gates, runtime assertions, security attribution, and framework self-checks are consistent"
     )
     return 0
 
