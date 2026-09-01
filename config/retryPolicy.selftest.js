@@ -5,6 +5,7 @@ const {
   MIN_EXECUTED_TESTS,
   assertMeaningfulRunManifest,
   assertNoRetryRecoveredPasses,
+  lockedCypressVersion,
   retryRecoveredPasses,
 } = require('./retryPolicy');
 
@@ -31,18 +32,22 @@ function run(spec, tests) {
 }
 
 const capabilityTests = [
-  test('coordinates intercept aliases'),
-  test('restores session state'),
-  test('controls application timers'),
+  test('Cypress capability contracts > coordinates intercept aliases, retryable DOM assertions, and node tasks'),
+  test('Cypress capability contracts > restores browser state through cy.session with an explicit validation contract'),
+  test('Cypress capability contracts > controls application timers deterministically with cy.clock and cy.tick'),
 ];
-const loginTests = [test('logs in'), test('rejects invalid credentials')];
+const loginTests = [
+  test('authentication flow > logs in with valid credentials'),
+  test('authentication flow > shows an error for invalid credentials'),
+];
+const lockedVersion = lockedCypressVersion();
 const clean = {
   schemaVersion: 1,
   runId: 'gha-123-1',
   baseUrl: 'http://127.0.0.1:3100',
   browser: { name: 'chrome', version: '151.0.0.0' },
   platform: { name: 'linux', version: 'Ubuntu' },
-  cypressVersion: '15.21.1',
+  cypressVersion: lockedVersion,
   totals: {
     tests: MIN_EXECUTED_TESTS,
     passed: MIN_EXECUTED_TESTS,
@@ -59,6 +64,7 @@ const expected = {
   runId: 'gha-123-1',
   baseUrl: 'http://127.0.0.1:3100',
   browser: 'chrome',
+  cypressVersion: lockedVersion,
 };
 
 assert.deepEqual(retryRecoveredPasses(clean), []);
@@ -73,7 +79,11 @@ assert.throws(() => assertNoRetryRecoveredPasses(flaky), /retry-recovered pass d
 const terminalFailure = structuredClone(clean);
 terminalFailure.totals.passed -= 1;
 terminalFailure.totals.failed = 1;
-terminalFailure.runs[0].tests[0] = test('still fails', 'failed', 3);
+terminalFailure.runs[0].tests[0] = test(
+  'Cypress capability contracts > coordinates intercept aliases, retryable DOM assertions, and node tasks',
+  'failed',
+  3
+);
 terminalFailure.runs[0].stats.passes -= 1;
 terminalFailure.runs[0].stats.failures = 1;
 assert.deepEqual(retryRecoveredPasses(terminalFailure), []);
@@ -83,7 +93,7 @@ assert.throws(
 );
 
 const tooSmall = structuredClone(clean);
-tooSmall.runs[0].tests = [test('single test')];
+tooSmall.runs[0].tests = [capabilityTests[0]];
 tooSmall.runs[0].stats.tests = 1;
 tooSmall.runs[0].stats.passes = 1;
 tooSmall.runs[1].tests = [];
@@ -91,12 +101,15 @@ tooSmall.runs[1].stats.tests = 0;
 tooSmall.runs[1].stats.passes = 0;
 tooSmall.totals.tests = 1;
 tooSmall.totals.passed = 1;
-assert.throws(() => assertMeaningfulRunManifest(tooSmall, expected), /executed-test floor not met/);
+assert.throws(
+  () => assertMeaningfulRunManifest(tooSmall, expected),
+  /governed behavior evidence is missing/
+);
 
 const pending = structuredClone(clean);
 pending.totals.passed -= 1;
 pending.totals.pending = 1;
-pending.runs[0].tests[0] = test('disabled test', 'pending', 0);
+pending.runs[0].tests[0] = test(capabilityTests[0].title, 'pending', 0);
 pending.runs[0].stats.passes -= 1;
 pending.runs[0].stats.pending = 1;
 assert.throws(() => assertMeaningfulRunManifest(pending, expected), /executed-test floor not met/);
@@ -108,6 +121,13 @@ assert.throws(
   /browser mismatch/
 );
 
+const wrongVersion = structuredClone(clean);
+wrongVersion.cypressVersion = '0.0.0';
+assert.throws(
+  () => assertMeaningfulRunManifest(wrongVersion, expected),
+  /version mismatch/
+);
+
 const wrongRun = structuredClone(clean);
 wrongRun.runId = 'gha-other-1';
 assert.throws(() => assertMeaningfulRunManifest(wrongRun, expected), /runId mismatch/);
@@ -115,6 +135,13 @@ assert.throws(() => assertMeaningfulRunManifest(wrongRun, expected), /runId mism
 const missingSpec = structuredClone(clean);
 missingSpec.runs[0].spec = 'cypress/e2e/other.cy.js';
 assert.throws(() => assertMeaningfulRunManifest(missingSpec, expected), /required spec evidence is missing/);
+
+const missingBehavior = structuredClone(clean);
+missingBehavior.runs[0].tests[0].title = 'Cypress capability contracts > unrelated passing behavior';
+assert.throws(
+  () => assertMeaningfulRunManifest(missingBehavior, expected),
+  /governed behavior evidence is missing/
+);
 
 const duplicateSpec = structuredClone(clean);
 duplicateSpec.runs[1].spec = duplicateSpec.runs[0].spec;
