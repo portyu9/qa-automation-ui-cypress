@@ -15,6 +15,7 @@ concurrency:
 
 env:
   CYPRESS_BASE_URL: http://127.0.0.1:3100
+  CYPRESS_EXPECTED_BROWSER: chrome
   TEST_RUN_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}
   NODE_VERSION: 24.20.0
   NPM_VERSION: 11.19.1
@@ -45,7 +46,7 @@ jobs:
       - run: npm run cypress:verify
       - name: Run Chrome E2E gate against repository-owned fixture
         run: npm run test:chrome
-      - name: Validate meaningful Cypress evidence and reject retry-recovered passes
+      - name: Validate attributable Cypress evidence and reject retry-recovered passes
         run: node config/retryPolicy.js reports/run-manifest.json
       - name: Publish CI observability summary
         if: always()
@@ -75,7 +76,7 @@ jobs:
             echo "- npm: \`${NPM_VERSION}\` (exactly verified)"
             echo '- Target: repository-owned loopback fixture'
             echo '- Dependencies: lockfile with lifecycle scripts disabled; Cypress binary installed explicitly'
-            echo '- Evidence: minimum five executed tests + reconciled manifest + failure screenshots/video + CI observability envelope'
+            echo '- Evidence: run/browser/target attribution + required spec identities + per-spec/global count reconciliation + minimum five executed tests + failure screenshots/video + CI observability envelope'
             echo '- Flake policy: retry-recovered passes fail the gate'
           } | tee reports/ci-summary.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload Cypress evidence
