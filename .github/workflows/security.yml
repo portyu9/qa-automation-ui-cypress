@@ -101,6 +101,8 @@ jobs:
         run: mkdir -p reports/security
       - name: Scan dependencies, configuration, and repository secrets
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_INCLUDE_DEV_DEPS: "true"
         with:
           version: v0.74.0
           scan-type: fs
@@ -122,10 +124,16 @@ jobs:
             printf '### Security gate\n\nTrivy did not produce a report. Treating missing scanner evidence as a gate failure.\n' | tee "$summary" >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
-          jq -e '(.Results | type) == "array"' "$report" >/dev/null
+          jq -e '
+            (.SchemaVersion == 2)
+            and (.Trivy.Version == "0.74.0")
+            and ((.Results // []) | type == "array")
+            and (((.Results // []) | map(select(.Type == "npm" or ((.Target // "") | contains("package-lock.json")))) | length) > 0)
+          ' "$report" >/dev/null
           vulnerabilities=$(jq '[.Results[]? | .Vulnerabilities[]?] | length' "$report")
           misconfigurations=$(jq '[.Results[]? | .Misconfigurations[]?] | length' "$report")
           secrets=$(jq '[.Results[]? | .Secrets[]?] | length' "$report")
+          npm_targets=$(jq '[.Results[]? | select(.Type == "npm" or ((.Target // "") | contains("package-lock.json")))] | length' "$report")
           {
             echo '### Open-source security gate'
             echo
@@ -134,10 +142,11 @@ jobs:
             echo "| Fixed HIGH/CRITICAL vulnerabilities | ${vulnerabilities} |"
             echo "| HIGH/CRITICAL misconfigurations | ${misconfigurations} |"
             echo "| Gated secret findings | ${secrets} |"
+            echo "| npm dependency targets inspected | ${npm_targets} |"
             echo
             echo '- Scanner: Trivy v0.74.0'
-            echo '- Scope: repository filesystem, dependency manifests/locks, supported configuration files, and committed secret material'
-            echo '- Policy: gated findings retain a nonzero scan result; missing/invalid JSON evidence also fails the job'
+            echo '- Scope: repository filesystem, npm production/dev dependency graph, supported configuration files, and committed secret material'
+            echo '- Policy: HIGH/CRITICAL findings retain a nonzero scan result; missing/invalid JSON or missing npm dependency evidence also fails the job'
           } | tee "$summary" >> "$GITHUB_STEP_SUMMARY"
       - name: Upload security evidence
         if: always()
