@@ -27,10 +27,10 @@ A Cypress browser quality-engineering framework centered on **native command ret
 | Plane | What it proves | Execution | Evidence |
 | --- | --- | --- | --- |
 | Runtime contract | Configuration, reporter, evidence, and workflow-pin policy | Node self-tests | Assertions + exit status |
-| Primary browser | Authentication acceptance/rejection and page transitions | Node 24.20.0 + Chrome + local fixture | Reconciled run manifest, screenshots, video |
+| Primary browser | Authentication acceptance/rejection and page transitions | Node + Chrome + local fixture | Reconciled run manifest, screenshots, video |
 | Native command orchestration | Aliased interception, tasks, session caching/validation, request setup, deterministic clocks | Cypress command queue + local fixture | Native command/assertion output |
-| Browser compatibility | Alternate-browser behavior without changing runtime generation | Node 24.20.0 + Firefox | Independent browser evidence |
-| Runtime compatibility | Maintenance-LTS behavior without changing primary browser | Node 22.23.2 + Chrome | Independent runtime evidence |
+| Browser compatibility | Alternate-browser behavior without changing runtime generation | Node + Firefox | Independent browser evidence |
+| Runtime compatibility | Maintenance-LTS behavior without changing primary browser | Node + Chrome | Independent runtime evidence |
 | Controlled dependency | UI behavior under owned network conditions | `cy.intercept()` when justified | Native command/assertion output |
 | Security | SAST, npm advisories, dependency/configuration/secret risk, and PR dependency-change risk | CodeQL + npm Audit + Trivy + Dependency Review when available | Actions status + machine-readable security evidence |
 | Documentation | README/workflow/governance consistency | Repository-local validator | Actions status |
@@ -80,8 +80,8 @@ flowchart LR
 | Negative behavior | Rejection/error semantics are first-class executable contracts. |
 | Retries | Bounded run-mode retries are diagnostics, not the definition of correctness. |
 | Evidence | `after:run` writes an atomic privacy-aware run manifest; required lanes reconcile aggregate/per-test state, require at least five actually executed tests, reject disabled tests, and reject retry-recovered passes. |
-| Compatibility | Node 24.20.0 + Chrome is primary; Node 24.20.0 + Firefox isolates browser risk; Node 22.23.2 + Chrome isolates maintenance-LTS runtime risk. |
-| Toolchain | npm 11.19.1 is installed and then asserted exactly before dependency work in required Node lanes. |
+| Compatibility | Node + Chrome is primary; Node + Firefox isolates browser risk; Node + Chrome isolates maintenance-LTS runtime risk. |
+| Toolchain | npm is installed and then asserted exactly before dependency work in required Node lanes. |
 | Workflow supply chain | External Actions are full-SHA pinned and the repository executes a pin contract rather than relying on convention. |
 | Security | CodeQL, npm Audit, Trivy, and change-aware dependency review remain independent from browser-test retries. |
 
@@ -95,8 +95,8 @@ flowchart LR
 | Setup not under test? | `cy.request()` / API-state boundary | Avoid expensive UI setup |
 | Reusable authenticated/browser state? | `cy.session()` + validation | Cache state without weakening correctness |
 | Timer/expiry behavior? | `cy.clock()` + `cy.tick()` | Control time rather than sleeping |
-| Browser compatibility? | Node 24 + Firefox extended lane | Hold the current-LTS runtime stable while changing browser |
-| Node runtime compatibility? | Node 22 + Chrome extended lane | Hold the primary browser stable while changing runtime generation |
+| Browser compatibility? | Node + Firefox extended lane | Hold the current-LTS runtime stable while changing browser |
+| Node runtime compatibility? | Node + Chrome extended lane | Hold the primary browser stable while changing runtime generation |
 | Cross-origin browser flow? | `cy.origin()` when the product actually crosses origins | Cypress must explicitly switch origin execution context |
 | Real deployment behavior? | Explicit `CYPRESS_BASE_URL` | Separate environment from framework correctness |
 
@@ -224,7 +224,7 @@ Modern Cypress requires `cy.origin()` when commands in a single test must execut
 
 Cypress-native screenshots/video remain authoritative. `config/runReporter.js` adds a compact run-level manifest, while CI emits run ID, browser, Node runtime, commit/ref, target class, and final status. Required lanes independently reconcile aggregate counts against per-test terminal states, require at least five actually executed tests, reject pending/skipped tests, and reject retry-recovered passes. A green artifact uploader therefore cannot substitute for executed browser work.
 
-Primary CI runs **Node 24.20.0 + Chrome** after runtime/reporter/workflow-pin checks and Cypress binary verification. `extended.yml` changes one compatibility dimension at a time: **Node 24.20.0 + Firefox** isolates browser compatibility, while **Node 22.23.2 + Chrome** isolates maintenance-LTS runtime compatibility. npm **11.19.1** is asserted exactly in every Node lane.
+Primary CI runs **Node + Chrome** after runtime/reporter/workflow-pin checks and Cypress binary verification. `extended.yml` changes one compatibility dimension at a time: **Node + Firefox** isolates browser compatibility, while **Node + Chrome** isolates maintenance-LTS runtime compatibility. npm is asserted exactly in every Node lane.
 
 Stable workflow conclusions are intentionally small even when internal jobs evolve: `ci / ci-gate`, `extended / extended-gate`, and `security / security-gate` aggregate their applicable required work. Repository rules/settings are a separate governance layer and are not implied by these workflow contracts.
 
