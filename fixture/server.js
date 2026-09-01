@@ -98,6 +98,8 @@ function respond(res, status, contentType, body) {
     'Content-Type': contentType,
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+    'Permissions-Policy': 'camera=(), geolocation=(), microphone=()',
   });
   res.end(body);
 }
