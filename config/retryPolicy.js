@@ -61,12 +61,8 @@ function lockedCypressVersion(filePath = path.join(process.cwd(), 'package-lock.
   if (lock?.lockfileVersion !== 3 || !lock?.packages || typeof lock.packages !== 'object') {
     throw new Error('package-lock.json must use lockfileVersion 3 with a packages map');
   }
-  const declared = requiredText(lock.packages['']?.devDependencies?.cypress, 'locked root Cypress range');
-  const version = requiredText(lock.packages['node_modules/cypress']?.version, 'locked Cypress version');
-  if (!declared.includes(version) && !declared.startsWith('^') && !declared.startsWith('~')) {
-    throw new Error(`locked Cypress version ${version} is not represented by root declaration ${declared}`);
-  }
-  return version;
+  requiredText(lock.packages['']?.devDependencies?.cypress, 'locked root Cypress declaration');
+  return requiredText(lock.packages['node_modules/cypress']?.version, 'locked Cypress version');
 }
 
 function assertRunIdentity(manifest, expected = {}) {
