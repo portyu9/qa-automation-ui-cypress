@@ -32,7 +32,7 @@ A Cypress browser quality-engineering framework centered on **native command ret
 | Browser compatibility | Alternate-browser behavior without changing runtime generation | Node + Firefox | Independent browser evidence |
 | Runtime compatibility | Maintenance-LTS behavior without changing primary browser | Node + Chrome | Independent runtime evidence |
 | Controlled dependency | UI behavior under owned network conditions | `cy.intercept()` when justified | Native command/assertion output |
-| Security | SAST, npm advisories, dependency/configuration/secret risk, and PR dependency-change risk | CodeQL + npm Audit + Trivy + Dependency Review when available | Actions status + machine-readable security evidence |
+| Security | Workflow-policy, SAST, npm advisory, dependency/configuration/secret, and PR dependency-change risk | Supply-chain policy + CodeQL + npm Audit + Trivy + Dependency Review when available | Actions status + machine-readable security evidence |
 | Documentation | README/workflow/governance consistency | Repository-local validator | Actions status |
 
 ## Architecture
@@ -57,7 +57,8 @@ flowchart LR
     CHANGE --> DOCS[README + workflow contracts]
     DOCS --> DG[Docs / readme-contract]
 
-    SAST[CodeQL] --> SG[Security / security-gate]
+    SUPPLY[Supply-chain policy] --> SG[Security / security-gate]
+    SAST[CodeQL] --> SG
     AUDIT[npm Audit] --> SG
     TRIVY[Trivy] --> SG
     REVIEW[Dependency Review when available] --> SG
@@ -76,7 +77,7 @@ flowchart LR
     class CFG,PAGE,NET,STATE,DOCS policy;
     class CYP,FIX,AUTH,INV,EXT runtime;
     class EV,RESULT evidence;
-    class CIG,EG,DG,SAST,AUDIT,TRIVY,REVIEW,SG gate;
+    class CIG,EG,DG,SUPPLY,SAST,AUDIT,TRIVY,REVIEW,SG gate;
     linkStyle default stroke:#57606a,stroke-width:1.4px;
 ```
 
@@ -100,7 +101,7 @@ flowchart LR
 | Compatibility | Node + Chrome is primary; Node + Firefox isolates browser risk; Node + Chrome isolates maintenance-LTS runtime risk. |
 | Toolchain | npm is installed and then asserted exactly before dependency work in required Node lanes. |
 | Workflow supply chain | External Actions are full-SHA pinned and the repository executes a pin contract rather than relying on convention. |
-| Security | CodeQL, npm Audit, Trivy, and change-aware dependency review remain independent from browser-test retries. |
+| Security | Supply-chain policy, CodeQL, npm Audit, Trivy, and change-aware dependency review remain independent from browser-test retries. |
 
 ## Boundary decision guide
 
