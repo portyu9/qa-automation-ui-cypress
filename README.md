@@ -39,7 +39,7 @@ A Cypress browser quality-engineering framework centered on **native command ret
 
 ```mermaid
 flowchart LR
-    CHANGE[Change] --> CFG[Runtime self-checks]
+    CHANGE[Repository change] --> CFG[Runtime self-checks]
     CFG --> CYP[Cypress runner]
     CYP --> FIX[Repository fixture]
     FIX --> AUTH[Authentication]
@@ -48,18 +48,35 @@ flowchart LR
     CYP --> NET[Intercept + alias contracts]
     CYP --> STATE[Session + clock contracts]
     CYP --> EV[Manifest · Screenshot · Video]
-    CHANGE --> EXT[Compatibility lanes]
-    CHANGE --> SEC[Security]
-    CHANGE --> DOCS[Docs contract]
+    EV --> CIG[CI / ci-gate]
+    CFG --> CIG
+
+    CHANGE --> EXT[Browser + runtime compatibility]
+    EXT --> EG[Extended / extended-gate]
+
+    CHANGE --> DOCS[README + workflow contracts]
+    DOCS --> DG[Docs / readme-contract]
+
+    SAST[CodeQL] --> SG[Security / security-gate]
+    AUDIT[npm Audit] --> SG
+    TRIVY[Trivy] --> SG
+    REVIEW[Dependency Review when available] --> SG
+
+    CIG --> RESULT[Qualified repository change]
+    EG --> RESULT
+    DG --> RESULT
+    SG --> RESULT
 
     classDef entry fill:#ddf4ff,stroke:#0969da,color:#24292f,stroke-width:1.5px;
-    classDef core fill:#f6f8fa,stroke:#57606a,color:#24292f,stroke-width:1.5px;
-    classDef gate fill:#fbefff,stroke:#8250df,color:#24292f,stroke-width:1.5px;
+    classDef policy fill:#fbefff,stroke:#8250df,color:#24292f,stroke-width:1.5px;
+    classDef runtime fill:#fff8c5,stroke:#9a6700,color:#24292f,stroke-width:1.5px;
     classDef evidence fill:#dafbe1,stroke:#1a7f37,color:#24292f,stroke-width:1.5px;
+    classDef gate fill:#ffebe9,stroke:#cf222e,color:#24292f,stroke-width:1.5px;
     class CHANGE entry;
-    class CFG,FIX,AUTH,INV,PAGE,NET,STATE core;
-    class CYP,EXT,SEC,DOCS gate;
-    class EV evidence;
+    class CFG,PAGE,NET,STATE,DOCS policy;
+    class CYP,FIX,AUTH,INV,EXT runtime;
+    class EV,RESULT evidence;
+    class CIG,EG,DG,SAST,AUDIT,TRIVY,REVIEW,SG gate;
     linkStyle default stroke:#57606a,stroke-width:1.4px;
 ```
 
