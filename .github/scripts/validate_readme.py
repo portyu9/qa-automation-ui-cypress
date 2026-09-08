@@ -191,6 +191,7 @@ def validate_framework_check_surface(errors: list[str]) -> None:
     command = package.get("scripts", {}).get("config:check", "")
     for required in (
         "config/runtime.selftest.js",
+        "config/runtimePolicy.selftest.js",
         "config/runReporter.selftest.js",
         "config/cypressConfig.selftest.js",
         "config/retryPolicy.selftest.js",
