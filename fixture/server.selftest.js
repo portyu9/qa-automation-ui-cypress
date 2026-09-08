@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict');
 const http = require('node:http');
+const net = require('node:net');
 const { createFixtureServer, stopFixtureServer } = require('./server');
 
 const HOST = '127.0.0.1';
@@ -37,8 +38,35 @@ function request(port, pathname, method = 'GET') {
   });
 }
 
+function openIncompleteRequest(port) {
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection({ host: HOST, port }, () => {
+      socket.write('GET /health HTTP/1.1\r\nHost: fixture\r\n');
+      resolve(socket);
+    });
+    socket.once('error', reject);
+  });
+}
+
+function withTimeout(promise, timeoutMs, message) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
 (async () => {
   const server = createFixtureServer();
+  let lingeringSocket;
   try {
     const port = await listenEphemeral(server);
 
@@ -78,8 +106,19 @@ function request(port, pathname, method = 'GET') {
     assert.equal(rejectedMethod.status, 405);
     assert.equal(rejectedMethod.body, 'Method Not Allowed');
 
+    lingeringSocket = await openIncompleteRequest(port);
+    lingeringSocket.removeAllListeners('error');
+    lingeringSocket.on('error', () => {});
+    await withTimeout(
+      stopFixtureServer(server),
+      1000,
+      'fixture shutdown must not hang on a lingering browser/network connection'
+    );
+    assert.equal(server.listening, false);
+
     console.log('Cypress fixture server contract: ok');
   } finally {
+    lingeringSocket?.destroy();
     await stopFixtureServer(server);
   }
 })().catch((error) => {
