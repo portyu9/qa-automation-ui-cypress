@@ -32,10 +32,35 @@ function versionMajor(value, label) {
   return Number(match[1]);
 }
 
+function exactEnvVersion(workflow, name, label) {
+  const pattern = new RegExp(`^\\s{2}${name}:\\s*["']?([0-9]+\\.[0-9]+\\.[0-9]+)["']?\\s*$`, 'm');
+  const match = pattern.exec(workflow);
+  assert.ok(match, `${label} must define one exact ${name}`);
+  return match[1];
+}
+
 function primaryRuntime(ci) {
-  const match = /^\s*NODE_VERSION:\s*([0-9]+\.[0-9]+\.[0-9]+)\s*$/m.exec(ci);
-  assert.ok(match, 'ci.yml must define an exact NODE_VERSION');
-  return { version: match[1], major: versionMajor(match[1], 'ci.yml NODE_VERSION') };
+  const version = exactEnvVersion(ci, 'NODE_VERSION', 'ci.yml');
+  return { version, major: versionMajor(version, 'ci.yml NODE_VERSION') };
+}
+
+function packageManagerNpm(packageManager) {
+  const match = /^npm@(\d+\.\d+\.\d+)$/.exec(String(packageManager || '').trim());
+  assert.ok(match, 'package.json packageManager must pin npm as npm@major.minor.patch');
+  return match[1];
+}
+
+function workflowNpmVersion(workflow, label) {
+  const version = exactEnvVersion(workflow, 'NPM_VERSION', label);
+  assert.ok(
+    workflow.includes('npm@${NPM_VERSION}'),
+    `${label} must install npm through the governed NPM_VERSION`
+  );
+  assert.ok(
+    workflow.includes('$(npm --version)'),
+    `${label} must verify the installed npm version`
+  );
+  return version;
 }
 
 function extendedRows(workflow) {
@@ -57,6 +82,7 @@ const packageJson = readJson('package.json');
 const packageLock = readJson('package-lock.json');
 const ci = fs.readFileSync('.github/workflows/ci.yml', 'utf8');
 const extended = fs.readFileSync('.github/workflows/extended.yml', 'utf8');
+const security = fs.readFileSync('.github/workflows/security.yml', 'utf8');
 
 const engine = packageJson.engines?.node;
 assert.equal(
@@ -108,6 +134,26 @@ assert.equal(
   'extended.yml contains an unclassified Node/browser compatibility row'
 );
 
+const securityNode = exactEnvVersion(security, 'NODE_VERSION', 'security.yml');
+assert.equal(
+  securityNode,
+  primary.version,
+  'security.yml must use the same exact primary Node runtime as ci.yml'
+);
+
+const npmVersion = packageManagerNpm(packageJson.packageManager);
+for (const [label, workflow] of [
+  ['ci.yml', ci],
+  ['extended.yml', extended],
+  ['security.yml', security],
+]) {
+  assert.equal(
+    workflowNpmVersion(workflow, label),
+    npmVersion,
+    `${label} NPM_VERSION must match package.json packageManager`
+  );
+}
+
 console.log(
-  `Node runtime policy contract: engines=${engine}; primary=${primary.version}; supported=${supported.join(',')}`
+  `Node/npm runtime policy contract: engines=${engine}; primary=${primary.version}; supported=${supported.join(',')}; npm=${npmVersion}`
 );
