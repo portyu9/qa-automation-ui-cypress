@@ -15,7 +15,6 @@ module.exports = defineConfig({
   pageLoadTimeout: runtime.pageLoadTimeout,
   screenshotOnRunFailure: true,
   trashAssetsBeforeRuns: true,
-  allowCypressEnv: false,
   expose: {
     runId: runtime.runId,
   },

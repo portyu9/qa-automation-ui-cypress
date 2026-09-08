@@ -156,6 +156,10 @@ function stopFixtureServer(server) {
   if (!server?.listening) return Promise.resolve();
   return new Promise((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));
+    // Test execution is complete at this boundary. Force-close any browser/network
+    // connection that remains active so an implementation-specific keep-alive cannot
+    // prevent Cypress's after:run hook (and therefore CI) from terminating.
+    server.closeAllConnections();
   });
 }
 
