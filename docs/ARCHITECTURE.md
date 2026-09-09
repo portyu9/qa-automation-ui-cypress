@@ -21,6 +21,18 @@ flowchart LR
     REP --> MAN[run-manifest.json]
     MAN --> EV[evidence policy]
     EV --> GATE[CI / compatibility gates]
+
+    classDef entry fill:#DDF4FF,stroke:#0969DA,color:#24292F,stroke-width:1.5px;
+    classDef policy fill:#FBEFFF,stroke:#8250DF,color:#24292F,stroke-width:1.5px;
+    classDef runtime fill:#FFF8C5,stroke:#9A6700,color:#24292F,stroke-width:1.5px;
+    classDef evidence fill:#DAFBE1,stroke:#1A7F37,color:#24292F,stroke-width:1.5px;
+    classDef gate fill:#FFEBE9,stroke:#CF222E,color:#24292F,stroke-width:1.5px;
+    class CFG,CC entry;
+    class PAGE,CMD,INT,SESSION,CLOCK,REP policy;
+    class CY,SPEC,FX,RUN runtime;
+    class MAN,EV evidence;
+    class GATE gate;
+    linkStyle default stroke:#57606A,stroke-width:1.4px;
 ```
 
 The repository fixture exists to make framework validation independent of public-network availability. It is not a second general-purpose application framework.
@@ -123,7 +135,7 @@ The primary lane uses **Node + Chrome**, representing the current-LTS execution 
 - **Node + Firefox** changes browser engine while holding runtime constant;
 - **Node + Chrome** changes runtime generation while holding the primary browser constant.
 
-This is more diagnostic than a small accidental matrix in which both browser and Node version change together. Additional combinations belong only when a known compatibility interaction or release criterion justifies them.
+This is more diagnostic than a matrix where both browser and Node version change together. Additional combinations belong only when a known compatibility interaction or release criterion justifies them.
 
 npm is installed and asserted exactly before dependency work in required Node lanes. The dependency graph is installed with lifecycle scripts disabled; Cypress's binary installation is then invoked explicitly as a reviewed side effect.
 
@@ -142,7 +154,7 @@ These controls overlap by design but are not substitutes. The stable aggregate w
 
 ## CI evidence boundary
 
-Primary CI validates configuration/reporter/evidence/workflow-pin policy, verifies the Cypress binary, executes Chrome against the repository fixture, validates the run manifest semantically, and retains bounded evidence. Extended CI repeats the governed contract across the isolated browser and maintenance-LTS dimensions.
+Primary CI validates configuration/reporter/evidence/workflow-pin policy, verifies the Cypress binary, executes Chrome against the repository fixture, validates the run manifest semantically, and retains bounded evidence. Extended CI repeats the governed contract across isolated browser and runtime-compatibility dimensions.
 
 Each workflow has least-privilege permissions, concurrency cancellation, bounded job time, explicit artifacts, and a stable aggregate conclusion so internal matrix evolution does not constantly change the external status interface.
 
