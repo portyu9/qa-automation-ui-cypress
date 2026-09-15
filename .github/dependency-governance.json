@@ -52,7 +52,10 @@
     ".github/dependency-governance.json",
     ".github/scripts/dependency-governance.mjs",
     ".github/scripts/dependency-governance.selfcheck.mjs",
-    ".github/dependabot.yml"
+    ".github/dependabot.yml",
+    ".github/dependency-recovery.json",
+    ".github/scripts/dependency-recovery-policy.mjs",
+    ".github/scripts/dependency-recovery-policy.selfcheck.mjs"
   ],
   "ecosystems": {
     "npm": {

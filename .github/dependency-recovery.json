@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "maxRunAttempts": 2,
+  "transientSteps": [
+    "Checkout",
+    "Set up Node.js",
+    "Pin and verify Node/npm toolchain",
+    "Install locked dependencies without lifecycle scripts",
+    "Install locked graph without lifecycle scripts",
+    "Install the explicitly approved Cypress binary",
+    "Upload Cypress evidence",
+    "Upload compatibility evidence",
+    "Upload npm audit evidence",
+    "Upload security evidence"
+  ]
+}
