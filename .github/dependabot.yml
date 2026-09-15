@@ -8,6 +8,7 @@ updates:
       time: "09:00"
       timezone: "America/New_York"
     open-pull-requests-limit: 10
+    rebase-strategy: auto
     allow:
       - dependency-type: direct
     groups:
@@ -26,6 +27,7 @@ updates:
       time: "09:00"
       timezone: "America/New_York"
     open-pull-requests-limit: 5
+    rebase-strategy: auto
     groups:
       routine-actions:
         patterns: ["*"]
