@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 /* global structuredClone, fetch, Buffer, console */
 
-import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
+import governanceConfig from '../dependency-governance.json' with { type: 'json' };
 
-const DEFAULT_CONFIG_PATH = '.github/dependency-governance.json';
 const DEP_SECTIONS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
 const PAGE_SIZE = 100;
 
@@ -425,9 +424,8 @@ class GitHubApi {
   }
 }
 
-function loadConfig(configPath = process.env.GOVERNANCE_CONFIG || DEFAULT_CONFIG_PATH) {
-  const absolute = path.resolve(configPath);
-  const config = JSON.parse(fs.readFileSync(absolute, 'utf8'));
+function loadConfig() {
+  const config = structuredClone(governanceConfig);
   const errors = validateConfig(config);
   if (errors.length) throw new Error(`Invalid dependency governance config:\n- ${errors.join('\n- ')}`);
   return config;
@@ -495,7 +493,6 @@ export function validateSignedMetadata(commit, config) {
   }
   return { eligible: reasons.length === 0, reasons: unique(reasons), metadata };
 }
-
 
 export function workflowIdentityMatches(run, pull, requirement) {
   const expectedPath = `.github/workflows/${requirement.file}`;
@@ -730,10 +727,36 @@ export function eventPullNumber(event, eventName) {
   return null;
 }
 
-async function resolveWorkflowRunPull(api, event) {
-  const direct = event.workflow_run?.pull_requests?.[0]?.number;
-  if (direct) return direct;
-  const branch = event.workflow_run?.head_branch;
+export function targetPullNumberFromEnvironment(eventName, env = process.env) {
+  if (eventName === 'schedule') return null;
+  const raw = String(env.TARGET_PR_NUMBER || '').trim();
+  if (!raw) return null;
+  return parsePositiveInteger(raw, `${eventName} target PR number`);
+}
+
+export function normalizeDependabotHeadBranch(value) {
+  const branch = String(value || '').trim();
+  if (!branch) return null;
+  if (!branch.startsWith('dependabot/')) return null;
+  if (branch.length > 255) throw new Error('workflow_run head branch exceeds 255 characters');
+  if (!/^[A-Za-z0-9._/-]+$/u.test(branch)) {
+    throw new Error('workflow_run head branch contains unsupported characters');
+  }
+  if (
+    branch.includes('..') ||
+    branch.includes('//') ||
+    branch.includes('@{') ||
+    branch.endsWith('/') ||
+    branch.endsWith('.') ||
+    branch.endsWith('.lock')
+  ) {
+    throw new Error('workflow_run head branch violates bounded ref policy');
+  }
+  return branch;
+}
+
+async function resolveWorkflowRunPull(api, branchValue) {
+  const branch = normalizeDependabotHeadBranch(branchValue);
   if (!branch) return null;
   const pulls = await api.paginate(`/pulls?state=open&head=${encodeURIComponent(`${api.owner}:${branch}`)}`);
   return pulls.length === 1 ? pulls[0].number : null;
@@ -760,9 +783,7 @@ async function main() {
     return;
   }
   const eventName = process.env.GITHUB_EVENT_NAME;
-  const eventPath = process.env.GITHUB_EVENT_PATH;
-  if (!eventName || !eventPath) throw new Error('GITHUB_EVENT_NAME and GITHUB_EVENT_PATH are required');
-  const event = JSON.parse(fs.readFileSync(eventPath, 'utf8'));
+  if (!eventName) throw new Error('GITHUB_EVENT_NAME is required');
   const api = new GitHubApi({ token: process.env.GITHUB_TOKEN, repository: process.env.GITHUB_REPOSITORY, maxPaginationPages: config.maxPaginationPages });
   const allowMerge = process.env.ALLOW_MERGE === 'true';
 
@@ -775,8 +796,8 @@ async function main() {
     return;
   }
 
-  let number = eventPullNumber(event, eventName);
-  if (!number && eventName === 'workflow_run') number = await resolveWorkflowRunPull(api, event);
+  let number = targetPullNumberFromEnvironment(eventName);
+  if (!number && eventName === 'workflow_run') number = await resolveWorkflowRunPull(api, process.env.WORKFLOW_RUN_HEAD_BRANCH);
   if (!number) {
     console.log(`No pull request resolved for ${eventName}; nothing to do.`);
     return;
