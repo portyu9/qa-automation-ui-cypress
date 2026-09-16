@@ -13,6 +13,21 @@ const PAGE_SIZE = 100;
 const TERMINAL_NONBLOCKING_CONCLUSIONS = new Set(['success', 'skipped']);
 const LOG_TIMESTAMP = /^\uFEFF?(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s/;
 
+// Configuration may narrow this set, but it cannot expand recovery authority.
+// Any new recoverable step therefore requires a protected policy-code change.
+const SAFE_TRANSIENT_STEPS = new Set([
+  'Checkout',
+  'Set up Node.js',
+  'Pin and verify Node/npm toolchain',
+  'Install locked dependencies without lifecycle scripts',
+  'Install locked graph without lifecycle scripts',
+  'Install the explicitly approved Cypress binary',
+  'Upload Cypress evidence',
+  'Upload compatibility evidence',
+  'Upload npm audit evidence',
+  'Upload security evidence',
+]);
+
 const NON_TRANSIENT_LOG_SIGNATURES = [
   { id: 'npm-resolution', pattern: /\b(?:ERESOLVE|ELSPROBLEMS|EBADENGINE|EUSAGE)\b/iu },
   { id: 'npm-no-matching-version', pattern: /\bNo matching version found\b/iu },
@@ -137,12 +152,8 @@ export function validateRecoveryConfig(config) {
   const errors = [];
   if (config?.schemaVersion !== 1) errors.push('schemaVersion must equal 1');
   if (typeof config?.enabled !== 'boolean') errors.push('enabled must be boolean');
-  if (
-    !Number.isInteger(config?.maxRunAttempts) ||
-    config.maxRunAttempts < 1 ||
-    config.maxRunAttempts > 3
-  ) {
-    errors.push('maxRunAttempts must be an integer from 1 to 3');
+  if (config?.maxRunAttempts !== 2) {
+    errors.push('maxRunAttempts must equal 2 so automatic recovery is capped at one rerun');
   }
   if (!Array.isArray(config?.transientSteps) || config.transientSteps.length === 0) {
     errors.push('transientSteps must be a non-empty array');
@@ -153,25 +164,9 @@ export function validateRecoveryConfig(config) {
     if (new Set(config.transientSteps).size !== config.transientSteps.length) {
       errors.push('transientSteps must not contain duplicates');
     }
-    for (const forbidden of [
-      'Validate framework and workflow contracts',
-      'Run npm run cypress:verify',
-      'Run Chrome E2E gate against repository-owned fixture',
-      'Run Cypress in chrome against repository-owned fixture',
-      'Run Cypress in firefox against repository-owned fixture',
-      'Validate attributable Cypress evidence and reject retry-recovered passes',
-      'Validate immutable workflow dependencies',
-      'Audit npm graph at HIGH/CRITICAL severity',
-      'Scan dependencies, configuration, and repository secrets',
-      'Require attributed security evidence',
-      'Review dependency changes',
-      'Analyze',
-      'Evaluate required CI jobs',
-      'Evaluate compatibility jobs',
-      'Evaluate security jobs',
-    ]) {
-      if (config.transientSteps.includes(forbidden)) {
-        errors.push(`${forbidden} must never be eligible for automatic recovery`);
+    for (const step of config.transientSteps) {
+      if (!SAFE_TRANSIENT_STEPS.has(step)) {
+        errors.push(`${step} is outside the code-level Cypress infrastructure recovery allowlist`);
       }
     }
   }
