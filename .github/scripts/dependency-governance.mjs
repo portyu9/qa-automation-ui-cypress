@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 /* global structuredClone, fetch, Buffer, console */
 
-import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
+import governanceConfig from '../dependency-governance.json' with { type: 'json' };
 
-const DEFAULT_CONFIG_PATH = '.github/dependency-governance.json';
 const DEP_SECTIONS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
 const PAGE_SIZE = 100;
 
@@ -425,9 +424,8 @@ class GitHubApi {
   }
 }
 
-function loadConfig(configPath = process.env.GOVERNANCE_CONFIG || DEFAULT_CONFIG_PATH) {
-  const absolute = path.resolve(configPath);
-  const config = JSON.parse(fs.readFileSync(absolute, 'utf8'));
+function loadConfig() {
+  const config = structuredClone(governanceConfig);
   const errors = validateConfig(config);
   if (errors.length) throw new Error(`Invalid dependency governance config:\n- ${errors.join('\n- ')}`);
   return config;
