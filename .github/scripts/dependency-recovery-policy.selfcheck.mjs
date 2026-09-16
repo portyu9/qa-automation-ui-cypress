@@ -194,31 +194,25 @@ const coreFixture = () => ({
 test('recovery config is bounded and infrastructure-only', () => {
   assert.deepEqual(validateRecoveryConfig(recoveryConfig), []);
   assert.equal(recoveryConfig.maxRunAttempts, 2);
-  for (const forbidden of [
-    'Validate framework and workflow contracts',
-    'Run npm run cypress:verify',
-    'Run Chrome E2E gate against repository-owned fixture',
-    'Run Cypress in chrome against repository-owned fixture',
-    'Run Cypress in firefox against repository-owned fixture',
-    'Validate attributable Cypress evidence and reject retry-recovered passes',
-    'Validate immutable workflow dependencies',
-    'Audit npm graph at HIGH/CRITICAL severity',
-    'Scan dependencies, configuration, and repository secrets',
-    'Require attributed security evidence',
-    'Review dependency changes',
-    'Analyze',
-    'Evaluate required CI jobs',
-    'Evaluate compatibility jobs',
-    'Evaluate security jobs',
-  ]) {
-    assert.equal(recoveryConfig.transientSteps.includes(forbidden), false, forbidden);
+  for (const invalidAttempts of [1, 3, 4]) {
+    assert.ok(
+      validateRecoveryConfig({ ...recoveryConfig, maxRunAttempts: invalidAttempts }).length > 0,
+      `maxRunAttempts=${invalidAttempts} must fail closed`,
+    );
   }
-  assert.ok(validateRecoveryConfig({ ...recoveryConfig, maxRunAttempts: 4 }).length > 0);
+  assert.ok(
+    validateRecoveryConfig({
+      ...recoveryConfig,
+      transientSteps: [...recoveryConfig.transientSteps, 'Future Cypress bootstrap'],
+    }).length > 0,
+    'unknown step names must require a protected policy-code change',
+  );
   assert.ok(
     validateRecoveryConfig({
       ...recoveryConfig,
       transientSteps: [...recoveryConfig.transientSteps, 'Run Chrome E2E gate against repository-owned fixture'],
     }).length > 0,
+    'functional Cypress execution must remain outside the code-level allowlist',
   );
 });
 
