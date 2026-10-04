@@ -17,15 +17,16 @@ const LOG_TIMESTAMP = /^\uFEFF?(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\
 // Any new recoverable step therefore requires a protected policy-code change.
 const SAFE_TRANSIENT_STEPS = new Set([
   'Checkout',
-  'Set up Node.js',
-  'Pin and verify Node/npm toolchain',
-  'Install locked dependencies without lifecycle scripts',
-  'Install locked graph without lifecycle scripts',
-  'Install the explicitly approved Cypress binary',
-  'Upload Cypress evidence',
-  'Upload compatibility evidence',
+  'Pin npm runtime',
+  'Install locked dependency graph with reviewed lifecycle scripts only',
+  'Install Chromium and operating-system dependencies',
+  'Install Playwright engine and operating-system dependencies',
+  'Upload fast-layer evidence',
+  'Upload Playwright evidence',
+  'Upload cross-browser evidence',
+  'Upload maintenance-LTS browser evidence',
   'Upload npm audit evidence',
-  'Upload security evidence',
+  'Upload Trivy security evidence',
 ]);
 
 const NON_TRANSIENT_LOG_SIGNATURES = [
@@ -166,7 +167,7 @@ export function validateRecoveryConfig(config) {
     }
     for (const step of config.transientSteps) {
       if (!SAFE_TRANSIENT_STEPS.has(step)) {
-        errors.push(`${step} is outside the code-level Cypress infrastructure recovery allowlist`);
+        errors.push(`${step} is outside the code-level Playwright infrastructure recovery allowlist`);
       }
     }
   }
@@ -557,7 +558,7 @@ async function recoverPull({
       pr: number,
       skipped: true,
       reason: staleOnly
-        ? 'waiting for Dependabot native auto-rebase; controller never mutates Dependabot branches'
+        ? 'waiting for owner-authenticated Dependabot rebase; controller never mutates Dependabot branches'
         : 'recovery scope is not eligible',
       scope,
     };
