@@ -111,28 +111,6 @@ function canonicalFixture() {
   return { baseSha, headSha, pull, commit };
 }
 
-function runFixture({
-  conclusion = 'failure',
-  attempt = 1,
-  workflow = governanceConfig.requiredWorkflows[0],
-  headSha = 'b'.repeat(40),
-  headBranch = 'dependabot/npm_and_yarn/routine',
-} = {}) {
-  return {
-    id: 501,
-    name: workflow.workflow,
-    path: `.github/workflows/${workflow.file}`,
-    event: 'pull_request',
-    head_sha: headSha,
-    head_branch: headBranch,
-    pull_requests: [{ number: 41 }],
-    status: 'completed',
-    conclusion,
-    run_attempt: attempt,
-    updated_at: '2026-09-15T12:00:10Z',
-  };
-}
-
 function fakeGithub({
   pull,
   commit,
@@ -171,6 +149,28 @@ function fakeGithub({
   return { api, reruns };
 }
 
+function runFixture({
+  conclusion = 'failure',
+  attempt = 1,
+  workflow = governanceConfig.requiredWorkflows[0],
+  headSha = 'b'.repeat(40),
+  headBranch = 'dependabot/npm_and_yarn/routine',
+} = {}) {
+  return {
+    id: 501,
+    name: workflow.workflow,
+    path: `.github/workflows/${workflow.file}`,
+    event: 'pull_request',
+    head_sha: headSha,
+    head_branch: headBranch,
+    pull_requests: [{ number: 41 }],
+    status: 'completed',
+    conclusion,
+    run_attempt: attempt,
+    updated_at: '2026-09-15T12:00:10Z',
+  };
+}
+
 function contextFixture(pull) {
   return {
     eventName: 'workflow_run',
@@ -191,7 +191,7 @@ const coreFixture = () => ({
   },
 });
 
-test('recovery config is bounded and infrastructure-only', () => {
+test('recovery config is valid, bounded, and contains infrastructure-only steps', () => {
   assert.deepEqual(validateRecoveryConfig(recoveryConfig), []);
   assert.equal(recoveryConfig.maxRunAttempts, 2);
   for (const invalidAttempts of [1, 3, 4]) {
@@ -203,7 +203,7 @@ test('recovery config is bounded and infrastructure-only', () => {
   assert.ok(
     validateRecoveryConfig({
       ...recoveryConfig,
-      transientSteps: [...recoveryConfig.transientSteps, 'Future Cypress bootstrap'],
+      transientSteps: [...recoveryConfig.transientSteps, 'Future browser bootstrap'],
     }).length > 0,
     'unknown step names must require a protected policy-code change',
   );
@@ -212,14 +212,17 @@ test('recovery config is bounded and infrastructure-only', () => {
       ...recoveryConfig,
       transientSteps: [...recoveryConfig.transientSteps, 'Run Chrome E2E gate against repository-owned fixture'],
     }).length > 0,
-    'functional Cypress execution must remain outside the code-level allowlist',
+    'functional browser execution must remain outside the code-level allowlist',
   );
 });
 
-test('signature model stays narrow', () => {
+test('signature model is narrow and deterministic evidence outranks transient words', () => {
   assert.deepEqual(matchingTransientSignatures('npm error code EAI_AGAIN'), ['dns-eai-again']);
   assert.deepEqual(matchingTransientSignatures('request failed with status code 503'), [
     'http-5xx',
+  ]);
+  assert.deepEqual(matchingTransientSignatures('503 Service Unavailable'), [
+    'gateway-service-outage',
   ]);
   assert.deepEqual(matchingTransientSignatures('Service Unavailable'), []);
   assert.deepEqual(matchingTransientSignatures('502 vulnerabilities found'), []);
@@ -228,7 +231,7 @@ test('signature model stays narrow', () => {
   assert.deepEqual(matchingNonTransientSignatures('npm error code ENOSPC'), ['disk-space']);
 });
 
-test('only failed-step timestamp window can authorize recovery', () => {
+test('only timestamp-bounded failed-step logs can authorize recovery', () => {
   const candidate = job();
   const window = extractStepLogWindow(
     logs({
@@ -241,6 +244,7 @@ test('only failed-step timestamp window can authorize recovery', () => {
   assert.match(window, /ERESOLVE/);
   assert.doesNotMatch(window, /EAI_AGAIN/);
   assert.doesNotMatch(window, /Service Unavailable/);
+
   const result = classifyLeafJobFailure(
     candidate,
     logs({ before: 'npm error code EAI_AGAIN', failed: 'npm error code ERESOLVE' }),
@@ -250,7 +254,7 @@ test('only failed-step timestamp window can authorize recovery', () => {
   assert.match(result.reason, /deterministic or policy-blocking/);
 });
 
-test('allowlisted package setup with precise network evidence is retryable', () => {
+test('allowlisted infrastructure step plus its own precise transient evidence is retryable', () => {
   const result = classifyLeafJobFailure(
     job(),
     logs({ failed: 'npm error code ECONNRESET' }),
@@ -260,7 +264,7 @@ test('allowlisted package setup with precise network evidence is retryable', () 
   assert.deepEqual(result.signatures, ['connection-reset']);
 });
 
-test('deterministic blocker wins in the same failed step', () => {
+test('deterministic blocker wins even when transient evidence is in the same failed step', () => {
   const result = classifyLeafJobFailure(
     job(),
     logs({ failed: 'npm error code EAI_AGAIN then npm error code ERESOLVE' }),
@@ -270,7 +274,7 @@ test('deterministic blocker wins in the same failed step', () => {
   assert.deepEqual(result.blockers, ['npm-resolution']);
 });
 
-test('missing or malformed timestamps fail closed', () => {
+test('missing or malformed step timestamps fail closed', () => {
   for (const candidate of [
     job({ startedAt: null }),
     job({ completedAt: null }),
@@ -287,15 +291,14 @@ test('missing or malformed timestamps fail closed', () => {
   }
 });
 
-test('functional, evidence, compatibility, and security failures are never transient', () => {
+test('functional, validation, and security failures stay non-retryable with network-looking text', () => {
   for (const step of [
-    'Validate framework and workflow contracts',
-    'Run npm run cypress:verify',
+    'Lint JavaScript',
+    'Run fast contracts with coverage',
     'Run Chrome E2E gate against repository-owned fixture',
-    'Run Cypress in chrome against repository-owned fixture',
     'Run Cypress in firefox against repository-owned fixture',
     'Validate attributable Cypress evidence and reject retry-recovered passes',
-    'Audit npm graph at HIGH/CRITICAL severity',
+    'Audit npm dependency graph at HIGH/CRITICAL severity',
     'Scan dependencies, configuration, and repository secrets',
     'Analyze',
   ]) {
@@ -308,7 +311,7 @@ test('functional, evidence, compatibility, and security failures are never trans
   }
 });
 
-test('workflow rerun requires one failed stable gate and no ambiguous siblings', () => {
+test('run recovery requires exactly one failed stable gate and no ambiguous siblings', () => {
   const run = { status: 'completed', conclusion: 'failure', run_attempt: 1 };
   const transient = job({ id: 10 });
   const positive = classifyRunFailure({
@@ -320,42 +323,63 @@ test('workflow rerun requires one failed stable gate and no ambiguous siblings',
   });
   assert.equal(positive.rerunnable, true, positive.reason);
 
-  for (const conclusion of ['cancelled', 'timed_out', 'neutral', 'action_required', 'stale', null]) {
-    const blocked = classifyRunFailure({
+  for (const conclusion of [
+    'cancelled',
+    'timed_out',
+    'neutral',
+    'action_required',
+    'stale',
+    null,
+  ]) {
+    const result = classifyRunFailure({
       run,
       jobs: [transient, { id: 20, name: 'sibling', conclusion, steps: [] }, gate()],
       logsByJobId: { 10: logs({ failed: 'npm error code EAI_AGAIN' }) },
       gateName: 'ci-gate',
       recoveryConfig,
     });
-    assert.equal(blocked.rerunnable, false, String(conclusion));
-    assert.match(blocked.reason, /ambiguous terminal state/);
+    assert.equal(result.rerunnable, false, String(conclusion));
+    assert.match(result.reason, /ambiguous terminal state/);
   }
 
-  const missingGate = classifyRunFailure({
-    run,
-    jobs: [transient],
-    logsByJobId: { 10: logs({ failed: 'npm error code EAI_AGAIN' }) },
-    gateName: 'ci-gate',
-    recoveryConfig,
-  });
-  assert.equal(missingGate.rerunnable, false);
-  assert.match(missingGate.reason, /stable aggregate gate/);
+  for (const gateConclusion of ['success', 'skipped', 'cancelled', 'timed_out']) {
+    const result = classifyRunFailure({
+      run,
+      jobs: [transient, gate('ci-gate', gateConclusion)],
+      logsByJobId: { 10: logs({ failed: 'npm error code EAI_AGAIN' }) },
+      gateName: 'ci-gate',
+      recoveryConfig,
+    });
+    assert.equal(result.rerunnable, false);
+    assert.match(result.reason, /stable aggregate gate/);
+  }
 });
 
-test('automatic recovery is capped after one rerun', () => {
+test('recovery is capped at one automatic rerun and ambiguous workflow conclusions fail closed', () => {
+  const transient = job({ id: 10 });
   const result = classifyRunFailure({
     run: { status: 'completed', conclusion: 'failure', run_attempt: 2 },
-    jobs: [job({ id: 10 }), gate()],
+    jobs: [transient, gate()],
     logsByJobId: { 10: logs({ failed: 'npm error code EAI_AGAIN' }) },
     gateName: 'ci-gate',
     recoveryConfig,
   });
   assert.equal(result.rerunnable, false);
   assert.match(result.reason, /reached recovery cap/);
+
+  for (const conclusion of ['cancelled', 'timed_out', 'action_required', 'stale']) {
+    const blocked = classifyRunFailure({
+      run: { status: 'completed', conclusion, run_attempt: 1 },
+      jobs: [transient, gate()],
+      logsByJobId: { 10: logs({ failed: 'npm error code EAI_AGAIN' }) },
+      gateName: 'ci-gate',
+      recoveryConfig,
+    });
+    assert.equal(blocked.rerunnable, false, conclusion);
+  }
 });
 
-test('scope admits npm and rejects control-plane or unknown files', () => {
+test('scope requires canonical provenance, signed metadata, an allowlisted ecosystem, and no control-plane path', () => {
   const base = {
     pull: { changed_files: 2 },
     files: [{ filename: 'package.json' }, { filename: 'package-lock.json' }],
@@ -382,7 +406,7 @@ test('scope admits npm and rejects control-plane or unknown files', () => {
   );
 });
 
-test('injected-client orchestration requests one canonical transient rerun', async () => {
+test('injected-client orchestration requests exactly one rerun for a canonical transient failure', async () => {
   const fixture = canonicalFixture();
   const requirement = governanceConfig.requiredWorkflows[0];
   const workflowRun = runFixture({
@@ -390,10 +414,11 @@ test('injected-client orchestration requests one canonical transient rerun', asy
     headSha: fixture.headSha,
     headBranch: fixture.pull.head.ref,
   });
+  const transientJob = job({ id: 10, step: recoveryConfig.transientSteps[0] });
   const { api, reruns } = fakeGithub({
     ...fixture,
     run: workflowRun,
-    jobs: [job({ id: 10 }), gate(requirement.gate)],
+    jobs: [transientJob, gate(requirement.gate)],
     jobLog: logs({ failed: 'npm error code EAI_AGAIN' }),
   });
   const result = await runDependencyRecovery({
@@ -406,31 +431,80 @@ test('injected-client orchestration requests one canonical transient rerun', asy
   assert.equal(result.actions[0].state, 'rerun-requested');
 });
 
-test('stale canonical head waits for native Dependabot auto-rebase', async () => {
-  const fixture = canonicalFixture();
+test('injected-client orchestration never reruns contaminated, stale, or ambiguous failures', async () => {
   const requirement = governanceConfig.requiredWorkflows[0];
-  const { api, reruns } = fakeGithub({
-    ...fixture,
-    baseSha: 'c'.repeat(40),
-    run: runFixture({
-      workflow: requirement,
-      headSha: fixture.headSha,
-      headBranch: fixture.pull.head.ref,
-    }),
-    jobs: [job({ id: 10 }), gate(requirement.gate)],
-    jobLog: logs({ failed: 'npm error code EAI_AGAIN' }),
-  });
-  const result = await runDependencyRecovery({
-    github: api,
-    context: contextFixture(fixture.pull),
-    core: coreFixture(),
-    allowRerun: true,
-  });
-  assert.deepEqual(reruns, []);
-  assert.match(result.reason, /auto-rebase/);
+
+  {
+    const fixture = canonicalFixture();
+    const { api, reruns } = fakeGithub({
+      ...fixture,
+      run: runFixture({
+        workflow: requirement,
+        headSha: fixture.headSha,
+        headBranch: fixture.pull.head.ref,
+      }),
+      jobs: [job({ id: 10, step: recoveryConfig.transientSteps[0] }), gate(requirement.gate)],
+      jobLog: logs({ before: 'npm error code EAI_AGAIN', failed: 'npm error code ERESOLVE' }),
+    });
+    await runDependencyRecovery({
+      github: api,
+      context: contextFixture(fixture.pull),
+      core: coreFixture(),
+      allowRerun: true,
+    });
+    assert.deepEqual(reruns, []);
+  }
+
+  {
+    const fixture = canonicalFixture();
+    const { api, reruns } = fakeGithub({
+      ...fixture,
+      baseSha: 'c'.repeat(40),
+      run: runFixture({
+        workflow: requirement,
+        headSha: fixture.headSha,
+        headBranch: fixture.pull.head.ref,
+      }),
+      jobs: [job({ id: 10, step: recoveryConfig.transientSteps[0] }), gate(requirement.gate)],
+      jobLog: logs({ failed: 'npm error code EAI_AGAIN' }),
+    });
+    const result = await runDependencyRecovery({
+      github: api,
+      context: contextFixture(fixture.pull),
+      core: coreFixture(),
+      allowRerun: true,
+    });
+    assert.deepEqual(reruns, []);
+    assert.match(result.reason, /owner-authenticated Dependabot rebase/);
+  }
+
+  {
+    const fixture = canonicalFixture();
+    const { api, reruns } = fakeGithub({
+      ...fixture,
+      run: runFixture({
+        workflow: requirement,
+        headSha: fixture.headSha,
+        headBranch: fixture.pull.head.ref,
+      }),
+      jobs: [
+        job({ id: 10, step: recoveryConfig.transientSteps[0] }),
+        { id: 20, name: 'sibling', conclusion: 'timed_out', steps: [] },
+        gate(requirement.gate),
+      ],
+      jobLog: logs({ failed: 'npm error code EAI_AGAIN' }),
+    });
+    await runDependencyRecovery({
+      github: api,
+      context: contextFixture(fixture.pull),
+      core: coreFixture(),
+      allowRerun: true,
+    });
+    assert.deepEqual(reruns, []);
+  }
 });
 
-test('dry-run reports safe recovery without mutating Actions state', async () => {
+test('dry-run mode can explain a safe recovery without mutating Actions state', async () => {
   const fixture = canonicalFixture();
   const requirement = governanceConfig.requiredWorkflows[0];
   const workflowRun = runFixture({
@@ -441,7 +515,7 @@ test('dry-run reports safe recovery without mutating Actions state', async () =>
   const { api, reruns } = fakeGithub({
     ...fixture,
     run: workflowRun,
-    jobs: [job({ id: 10 }), gate(requirement.gate)],
+    jobs: [job({ id: 10, step: recoveryConfig.transientSteps[0] }), gate(requirement.gate)],
     jobLog: logs({ failed: 'npm error code EAI_AGAIN' }),
   });
   const result = await runDependencyRecovery({
@@ -454,7 +528,7 @@ test('dry-run reports safe recovery without mutating Actions state', async () =>
   assert.equal(result.actions[0].state, 'dry-run');
 });
 
-test('Dependabot native rebasing and recovery wiring remain self-tested control plane', () => {
+test('Dependabot auto-rebase and recovery workflow wiring stay protected by self-tests', () => {
   const dependabot = readFileSync('.github/dependabot.yml', 'utf8');
   const ecosystems = dependabot.match(/^\s*-\s+package-ecosystem:/gmu) || [];
   const rebases = dependabot.match(/^\s*rebase-strategy:\s*auto\s*$/gmu) || [];
@@ -463,15 +537,16 @@ test('Dependabot native rebasing and recovery wiring remain self-tested control 
 
   const workflow = readFileSync('.github/workflows/dependency-governance.yml', 'utf8');
   for (const path of [
-    '.github/dependabot.yml',
     '.github/dependency-recovery.json',
     '.github/scripts/dependency-recovery-policy.mjs',
     '.github/scripts/dependency-recovery-policy.selfcheck.mjs',
+    '.github/dependabot.yml',
   ]) {
     assert.ok(workflow.includes(path), `${path} must trigger governance self-tests`);
   }
   assert.match(workflow, /actions\/github-script@[0-9a-f]{40}/u);
   assert.match(workflow, /runDependencyRecovery/u);
+  assert.match(workflow, /dependency-recovery-policy\.selfcheck\.mjs/u);
 });
 
 

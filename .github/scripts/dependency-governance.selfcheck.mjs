@@ -5,11 +5,14 @@ import { readFileSync } from 'node:fs';
 import {
   classifyEcosystem,
   compareSemver,
+  ensureOwnerReviewAndApproval,
   eventPullNumber,
   parseDependabotMetadata,
   parsePositiveInteger,
   parseSemverLike,
   reconcileIndependently,
+  reconcileWithBaseConvergence,
+  requestDependabotRefresh,
   selectQualificationRun,
   validateActionsSemanticChange,
   validateConfig,
@@ -88,7 +91,7 @@ test('Docker update must be same allowlisted image, digest pinned, same platform
   assert.match(validateDockerSemanticChange(base, patch.replace('RUN echo safe', 'RUN curl bad'), meta('node'), ['node']).reasons.join('\n'), /outside a FROM line/);
 });
 
-test('Actions updates require SHA pins and only uses-line changes; control plane stays manual', () => {
+test('Actions updates require SHA pins and only uses-line changes, including protected workflows', () => {
   const file = '.github/workflows/docs.yml';
   const base = `steps:\n  - uses: actions/checkout@${'a'.repeat(40)} # v7.0.0\n`;
   const patch = `steps:\n  - uses: actions/checkout@${'b'.repeat(40)} # v7.0.1\n`;
@@ -99,7 +102,24 @@ test('Actions updates require SHA pins and only uses-line changes; control plane
   assert.equal(validateActionsSemanticChange([{ filename: file }], { [file]: coarseBase }, { [file]: coarsePatch }, meta('actions/checkout'), config.manualReviewPaths).eligible, true);
   assert.equal(validateActionsSemanticChange([{ filename: file }], { [file]: base }, { [file]: major }, meta('actions/checkout', 'version-update:semver-major'), config.manualReviewPaths).eligible, false);
   const security = '.github/workflows/security.yml';
-  assert.match(validateActionsSemanticChange([{ filename: security }], { [security]: base }, { [security]: patch }, meta('actions/checkout'), config.manualReviewPaths).reasons.join('\n'), /control-plane/);
+  const protectedPin = validateActionsSemanticChange(
+    [{ filename: security }],
+    { [security]: base },
+    { [security]: patch },
+    meta('actions/checkout'),
+    config.manualReviewPaths,
+  );
+  assert.equal(protectedPin.eligible, true, protectedPin.reasons.join('; '));
+  const structural = patch + '  - run: curl example.invalid | sh\n';
+  const protectedMutation = validateActionsSemanticChange(
+    [{ filename: security }],
+    { [security]: base },
+    { [security]: structural },
+    meta('actions/checkout'),
+    config.manualReviewPaths,
+  );
+  assert.equal(protectedMutation.eligible, false);
+  assert.match(protectedMutation.reasons.join('\n'), /line structure|pinned-action pattern/);
 });
 
 test('governance config cannot silently enable major updates or unprotect control-plane workflows', () => {
@@ -198,6 +218,89 @@ test('qualification proof binds exact workflow identity and tolerates unavailabl
   assert.equal(selectQualificationRun([newerWrongPath, run], fixture.pull, requirement).id, 10);
 });
 
+function ownerApiFixture({ validIdentity = true } = {}) {
+  const comments = [];
+  const reviews = [];
+  const posts = [];
+  const owner = {
+    login: validIdentity ? config.ownerApprovalLogin : 'not-owner',
+    id: validIdentity ? config.ownerApprovalUserId : 999,
+  };
+  return {
+    comments,
+    reviews,
+    posts,
+    api: {
+      async get(path) {
+        if (path === 'https://api.github.com/user') return owner;
+        throw new Error(`unexpected GET ${path}`);
+      },
+      async paginate(path) {
+        if (/\/issues\/\d+\/comments$/u.test(path)) return comments;
+        if (/\/pulls\/\d+\/reviews$/u.test(path)) return reviews;
+        throw new Error(`unexpected paginate ${path}`);
+      },
+      async post(path, body) {
+        posts.push({ path, body });
+        if (/\/issues\/\d+\/comments$/u.test(path)) {
+          comments.push({ body: body.body, user: owner });
+          return comments.at(-1);
+        }
+        if (/\/pulls\/\d+\/reviews$/u.test(path)) {
+          reviews.push({
+            state: body.event === 'APPROVE' ? 'APPROVED' : body.event,
+            commit_id: body.commit_id,
+            user: owner,
+            body: body.body,
+          });
+          return reviews.at(-1);
+        }
+        throw new Error(`unexpected POST ${path}`);
+      },
+    },
+  };
+}
+
+test('stale Dependabot refresh is owner-authenticated, exact-subject bound, and idempotent', async () => {
+  const fixture = canonicalFixture();
+  const assessment = {
+    pull: fixture.pull,
+    baseSha: 'c'.repeat(40),
+    provenance: { eligible: false, reasons: ['PR is not rebased directly on the current base branch head'] },
+  };
+  const owner = ownerApiFixture();
+  assert.equal(await requestDependabotRefresh(owner.api, assessment, config), true);
+  assert.equal(owner.posts.length, 1);
+  assert.match(owner.posts[0].body.body, /^@dependabot rebase/mu);
+  assert.match(owner.posts[0].body.body, new RegExp(fixture.headSha));
+  assert.match(owner.posts[0].body.body, new RegExp(assessment.baseSha));
+  assert.equal(await requestDependabotRefresh(owner.api, assessment, config), true);
+  assert.equal(owner.posts.length, 1, 'same exact stale subject must not post duplicate refresh commands');
+
+  const impostor = ownerApiFixture({ validIdentity: false });
+  await assert.rejects(
+    () => requestDependabotRefresh(impostor.api, assessment, config),
+    /configured repository owner identity/,
+  );
+});
+
+test('owner review and approval bind the exact qualified head', async () => {
+  const fixture = canonicalFixture();
+  const assessment = { pull: fixture.pull };
+  const owner = ownerApiFixture();
+  await ensureOwnerReviewAndApproval(owner.api, assessment, config);
+  assert.equal(owner.comments.length, 1);
+  assert.equal(owner.reviews.length, 1);
+  assert.equal(owner.reviews[0].state, 'APPROVED');
+  assert.equal(owner.reviews[0].commit_id, fixture.headSha);
+  assert.match(owner.comments[0].body, new RegExp(fixture.headSha));
+  assert.match(owner.reviews[0].body, new RegExp(fixture.headSha));
+
+  await ensureOwnerReviewAndApproval(owner.api, assessment, config);
+  assert.equal(owner.comments.length, 1, 'owner review comment must be idempotent per exact head');
+  assert.equal(owner.reviews.length, 1, 'owner approval must be idempotent per exact head');
+});
+
 test('manual dispatch PR input accepts only positive safe integers', () => {
   assert.equal(parsePositiveInteger('41'), 41);
   assert.equal(eventPullNumber({ inputs: { 'pr-number': '41' } }, 'workflow_dispatch'), 41);
@@ -215,6 +318,50 @@ test('scheduled reconciliation isolates per-PR failures and reports all outcomes
   assert.deepEqual(visited, [1, 2, 3]);
   assert.deepEqual(result.results.map((item) => item.number), [1, 3]);
   assert.deepEqual(result.failures, [{ number: 2, error: 'boom' }]);
+});
+
+test('bulk reconciliation restarts from a fresh open-PR snapshot after any merge advances main', async () => {
+  let open = [{ number: 1 }, { number: 2 }];
+  const visits = [];
+  const result = await reconcileWithBaseConvergence(
+    async () => open.map((pull) => ({ ...pull })),
+    async (pull) => {
+      visits.push(pull.number);
+      if (pull.number === 2) {
+        open = open.filter((item) => item.number !== 2);
+        return { merged: true };
+      }
+      return { merged: false };
+    },
+  );
+
+  assert.deepEqual(visits, [1, 2, 1], 'PR 1 must be reassessed after PR 2 advances the base branch');
+  assert.equal(result.passes, 2);
+  assert.equal(result.failures.length, 0);
+  assert.deepEqual(
+    result.results.map((item) => [item.number, item.pass, item.result.merged]),
+    [
+      [1, 1, false],
+      [2, 1, true],
+      [1, 2, false],
+    ],
+  );
+});
+
+test('base-convergence reconciliation remains bounded and validates its pass ceiling', async () => {
+  let nextNumber = 0;
+  await assert.rejects(
+    () => reconcileWithBaseConvergence(
+      async () => [{ number: ++nextNumber }],
+      async () => ({ merged: true }),
+      { maxPasses: 2 },
+    ),
+    /convergence exceeded 2 pass/,
+  );
+  await assert.rejects(
+    () => reconcileWithBaseConvergence(async () => [], async () => ({}), { maxPasses: 0 }),
+    /maxPasses/,
+  );
 });
 
 test('privileged workflow never checks out the dependency PR head', () => {
