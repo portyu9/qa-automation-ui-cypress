@@ -30,8 +30,8 @@ const logs = ({ before = '', failed = '', after = '' } = {}) =>
 
 function job({
   id = 1,
-  name = 'quality',
-  step = 'Install locked dependency graph with reviewed lifecycle scripts only',
+  name = 'e2e',
+  step = 'Pin and verify Node/npm toolchain',
   conclusion = 'failure',
   startedAt = FAILURE_START,
   completedAt = FAILURE_END,
@@ -210,7 +210,7 @@ test('recovery config is valid, bounded, and contains infrastructure-only steps'
   assert.ok(
     validateRecoveryConfig({
       ...recoveryConfig,
-      transientSteps: [...recoveryConfig.transientSteps, 'Run Chromium E2E gate against repository-owned fixture'],
+      transientSteps: [...recoveryConfig.transientSteps, 'Run Chrome E2E gate against repository-owned fixture'],
     }).length > 0,
     'functional browser execution must remain outside the code-level allowlist',
   );
@@ -295,9 +295,9 @@ test('functional, validation, and security failures stay non-retryable with netw
   for (const step of [
     'Lint JavaScript',
     'Run fast contracts with coverage',
-    'Run Chromium E2E gate against repository-owned fixture',
-    'Run Chromium browser compatibility contract',
-    'Validate Playwright JUnit and HTML evidence',
+    'Run Chrome E2E gate against repository-owned fixture',
+    'Run Cypress in firefox against repository-owned fixture',
+    'Validate attributable Cypress evidence and reject retry-recovered passes',
     'Audit npm dependency graph at HIGH/CRITICAL severity',
     'Scan dependencies, configuration, and repository secrets',
     'Analyze',
