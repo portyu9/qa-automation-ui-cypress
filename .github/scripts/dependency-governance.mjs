@@ -147,13 +147,36 @@ export function validateNpmSemanticChange(basePackage, headPackage, baseLock, he
     if (oldEntry.spec === newEntry.spec) continue;
     const comparison = compareSemver(oldEntry.spec, newEntry.spec);
     changes.push({ ecosystem: 'npm', name: oldEntry.name, from: oldEntry.spec, to: newEntry.spec, risk: comparison.risk });
-    if (!['patch', 'minor'].includes(comparison.risk)) reasons.push(`${oldEntry.name}: ${comparison.reason}`);
+    if (!['patch', 'minor', 'major', 'major-risk'].includes(comparison.risk)) reasons.push(`${oldEntry.name}: ${comparison.reason}`);
   }
   if (changes.length === 0) reasons.push('no direct dependency version change could be proven from package.json');
 
-  const metadataNames = new Set(metadata.map((item) => item.name));
+  // Canonical signed major updates still require exact metadata, immutable
+  // non-dependency manifest fields, coherent lock data and all required gates.
+  const signed = new Map(metadata.map((item) => [item.name, item]));
+  if (signed.size !== metadata.length || signed.size !== changes.length) {
+    reasons.push('signed Dependabot dependency set must equal exact direct changes');
+  }
   for (const change of changes) {
-    if (!metadataNames.has(change.name)) reasons.push(`${change.name} changed but is absent from signed Dependabot metadata`);
+    const item = signed.get(change.name);
+    if (!item) {
+      reasons.push(`${change.name} changed but is absent from signed Dependabot metadata`);
+      continue;
+    }
+    const riskClass = change.risk === 'major-risk' ? 'minor' : change.risk;
+    if (!item.updateType?.endsWith(`semver-${riskClass}`)) {
+      reasons.push(`${change.name} signed update type differs from semantic risk`);
+    }
+    const parsed = parseSemverLike(change.to);
+    if (parsed && item.version !== `${parsed.major}.${parsed.minor}.${parsed.patch}`) {
+      reasons.push(`${change.name} signed version differs from package.json`);
+    }
+    const identities = [...after.values()].filter((entry) => entry.name === change.name);
+    const type = identities.length === 1 && identities[0].section === 'devDependencies'
+      ? 'direct:development' : 'direct:production';
+    if (identities.length !== 1 || item.dependencyType !== type) {
+      reasons.push(`${change.name} signed dependency type is invalid`);
+    }
   }
 
   const basePackages = baseLock?.packages || {};
@@ -347,8 +370,8 @@ export function validateConfig(config) {
     gateNames.add(item.gate);
     workflowFiles.add(item.file);
   }
-  if (!Array.isArray(config?.allowedUpdateTypes) || config.allowedUpdateTypes.length === 0 || config.allowedUpdateTypes.some((type) => /major/.test(type))) {
-    errors.push('allowedUpdateTypes must exist and must never include major updates');
+  if (!Array.isArray(config?.allowedUpdateTypes) || config.allowedUpdateTypes.length === 0 || config.allowedUpdateTypes.some((type) => !/^(?:version|security)-update:semver-(?:patch|minor|major)$/.test(type))) {
+    errors.push('allowedUpdateTypes must contain only canonical signed semver update classes');
   }
   for (const critical of ['.github/workflows/security.yml', '.github/workflows/dependency-governance.yml', '.github/dependency-governance.json', '.github/scripts/dependency-governance.mjs', '.github/scripts/dependency-governance.selfcheck.mjs', '.github/scripts/validate_codeql_sarif.py', '.github/scripts/validate_codeql_sarif_selfcheck.py', '.github/scripts/validate_security_stack.py', '.github/dependabot.yml']) {
     if (!config?.manualReviewPaths?.includes(critical)) errors.push(`${critical} must require manual review`);
@@ -657,7 +680,7 @@ function renderComment({ assessment, config, merged = false, dispatches = [] }) 
     `| PR provenance | ${provenance.eligible ? '✅ verified single signed Dependabot commit' : '❌ manual'} |`,
     `| Base freshness | ${provenance.commit?.parents?.[0]?.sha === baseSha ? '✅ directly based on current `main`' : '❌ stale or non-linear'} |`,
     `| Ecosystem | \`${ecosystem}\` |`,
-    `| Signed update metadata | ${metadataAssessment.eligible ? '✅ minor/patch class only' : '❌ contains unknown/major-risk class'} |`,
+    `| Signed update metadata | ${metadataAssessment.eligible ? '✅ signed semver update class' : '❌ unknown update class'} |`,
     `| Semantic scope | ${semantic.eligible ? '✅ allowlisted dependency-only change' : '❌ manual'} |`,
     '',
   ];
@@ -689,7 +712,7 @@ function renderComment({ assessment, config, merged = false, dispatches = [] }) 
   lines.push(
     `Head: \`${pull.head.sha}\``,
     '',
-    '> Safety invariant: privileged governance runs only trusted code from the default branch, never checks out or executes the Dependabot PR head, requires exact-head test/security gates, and never autonomously merges major, downgrade, prerelease, unknown, stale-base, or control-plane changes.',
+    '> Safety invariant: privileged governance runs only trusted code from the default branch, never checks out or executes the Dependabot PR head, requires exact-head test/security gates, and never autonomously merges downgrade, prerelease, unknown, stale-base, or control-plane changes.',
   );
   return `${lines.join('\n')}\n`;
 }
