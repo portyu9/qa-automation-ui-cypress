@@ -6,7 +6,7 @@ const config = JSON.parse(fs.readFileSync('.github/codeql-autofix.json', 'utf8')
 const governance = JSON.parse(fs.readFileSync('.github/dependency-governance.json', 'utf8'));
 const workflow = fs.readFileSync('.github/workflows/codeql-autofix.yml', 'utf8');
 
-const controllerSha = 'aeab356081f290b29fac24b9d01bdda7a28a7ff7';
+const controllerSha = '4aca606907a89f55ec3d498020f395c70a27887f';
 const controllerRepo = 'portyu9/qa-automation-mobile-appium';
 
 function sorted(values) {
@@ -79,7 +79,13 @@ test('autofix control plane is protected from autonomous dependency updates', ()
 
 test('canonical runtime discoverer is SHA pinned and no static targets survive', () => {
   assert.equal(Object.hasOwn(config, 'targetAlertNumbers'), false);
-  assert.equal((workflow.match(/ref: aeab356081f290b29fac24b9d01bdda7a28a7ff7/g) || []).length, 2);
+  assert.equal((workflow.match(/ref: 4aca606907a89f55ec3d498020f395c70a27887f/g) || []).length, 2);
   assert.doesNotMatch(JSON.stringify(config), /targetAlertNumbers/);
   assert.match(workflow, /runCodeqlAutofix/);
+});
+
+
+test('review-only canonical controller is pinned at accepted non-draft rollout', () => {
+  assert.equal((workflow.match(/ref: 4aca606907a89f55ec3d498020f395c70a27887f/g) || []).length, 2);
+  assert.doesNotMatch(workflow, /aeab356081f290b29fac24b9d01bdda7a28a7ff7/u);
 });
