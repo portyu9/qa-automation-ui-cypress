@@ -23,7 +23,7 @@ concurrency:
 
 env:
   AUTOFIX_CONTROLLER_REPOSITORY: portyu9/qa-automation-mobile-appium
-  AUTOFIX_CONTROLLER_SHA: aeab356081f290b29fac24b9d01bdda7a28a7ff7
+  AUTOFIX_CONTROLLER_SHA: 4aca606907a89f55ec3d498020f395c70a27887f
 
 jobs:
   self-test:
@@ -42,7 +42,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: portyu9/qa-automation-mobile-appium
-          ref: aeab356081f290b29fac24b9d01bdda7a28a7ff7
+          ref: 4aca606907a89f55ec3d498020f395c70a27887f
           path: .codeql-autofix-controller
           persist-credentials: false
           fetch-depth: 1
@@ -92,7 +92,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: portyu9/qa-automation-mobile-appium
-          ref: aeab356081f290b29fac24b9d01bdda7a28a7ff7
+          ref: 4aca606907a89f55ec3d498020f395c70a27887f
           path: .codeql-autofix-controller
           persist-credentials: false
           fetch-depth: 1
