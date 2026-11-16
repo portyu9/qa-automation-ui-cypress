@@ -680,7 +680,7 @@ async function qualificationForHead(api, pull, config) {
   return { allSuccess, anyFailed, qualifications };
 }
 
-function renderComment({ assessment, config, merged = false, dispatches = [] }) {
+function renderComment({ assessment, config, merged = false, mergeDeferred = false, dispatches = [] }) {
   const { pull, provenance, metadataAssessment, ecosystem, semantic, qualification, baseSha } = assessment;
   const state = merged
     ? '✅ merged by governed automation'
@@ -691,11 +691,14 @@ function renderComment({ assessment, config, merged = false, dispatches = [] }) 
         : qualification?.anyFailed
           ? '❌ qualification failed'
           : '⏳ eligible; waiting for required qualification';
+  const displayState = mergeDeferred
+    ? '⏳ exact-head qualified; GitHub reports a concurrent merge still in progress'
+    : state;
   const lines = [
     config.statusCommentMarker,
     '### Dependency governance',
     '',
-    `**State:** ${state}`,
+    `**State:** ${displayState}`,
     '',
     '| Proof | Result |',
     '| --- | --- |',
@@ -859,6 +862,55 @@ async function assessPull(api, number, config, { includeQualification = true } =
   return { pull, baseSha, files, ecosystem, provenance, metadataAssessment, semantic, qualification };
 }
 
+/**
+ * A 405 "Merge already in progress" is a concurrent GitHub mutation state,
+ * not permission to issue a second merge. Re-read the exact PR head and
+ * terminal state; only a verified merged=true may count as success.
+ */
+export async function resolveConcurrentMerge(
+  api,
+  number,
+  expectedHead,
+  { pause = sleep, attempts = 3 } = {},
+) {
+  if (
+    !Number.isSafeInteger(number) ||
+    number < 1 ||
+    !/^[0-9a-f]{40}$/.test(expectedHead) ||
+    !Number.isSafeInteger(attempts) ||
+    attempts < 1 ||
+    attempts > 3
+  ) {
+    throw new Error('concurrent merge resolution requires bounded exact-head identity');
+  }
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const live = await api.get(`/pulls/${number}`);
+    if (live?.number !== number || live?.head?.sha !== expectedHead) {
+      throw new Error('concurrent merge resolution observed changed PR identity or head');
+    }
+    if (
+      live.state === 'closed' &&
+      live.merged === true &&
+      /^[0-9a-f]{40}$/.test(live.merge_commit_sha || '')
+    ) {
+      return { merged: true, sha: live.merge_commit_sha };
+    }
+    if (live.state !== 'open') {
+      throw new Error('concurrent merge resolution reached an unexpected terminal state');
+    }
+    if (attempt < attempts) await pause(250 * attempt);
+  }
+  return { merged: false, deferred: true };
+}
+
+export function isExactConcurrentMergeConflict(error, api, number) {
+  return (
+    error instanceof Error &&
+    error.message ===
+      `GitHub API PUT ${api.root}/pulls/${number}/merge failed (405): Merge already in progress`
+  );
+}
+
 async function maybeMerge(api, ownerApi, assessment, config, allowMerge) {
   const eligible = assessment.provenance.eligible && assessment.metadataAssessment.eligible && assessment.semantic.eligible;
   if (!eligible || !assessment.qualification?.allSuccess || !allowMerge) return { merged: false };
@@ -877,12 +929,26 @@ async function maybeMerge(api, ownerApi, assessment, config, allowMerge) {
     throw new Error('exact-head owner approval disappeared before merge');
   }
 
-  const result = await api.put(`/pulls/${refreshed.pull.number}/merge`, {
-    merge_method: config.mergeMethod,
-    sha: refreshed.pull.head.sha,
-    commit_title: refreshed.pull.title,
-    commit_message: 'Qualified and merged by dependency governance after provenance, semantic-scope, exact-base, CI, extended, security, and documentation gates.',
-  });
+  let result;
+  try {
+    result = await api.put(`/pulls/${refreshed.pull.number}/merge`, {
+      merge_method: config.mergeMethod,
+      sha: refreshed.pull.head.sha,
+      commit_title: refreshed.pull.title,
+      commit_message: 'Qualified and merged by dependency governance after provenance, semantic-scope, exact-base, CI, extended, security, and documentation gates.',
+    });
+  } catch (error) {
+    if (!isExactConcurrentMergeConflict(error, api, refreshed.pull.number)) {
+      throw error;
+    }
+    // Never replay a non-idempotent merge mutation. Accept only a proven
+    // exact-head completed merge, otherwise defer to the trusted next wake.
+    result = await resolveConcurrentMerge(api, refreshed.pull.number, refreshed.pull.head.sha);
+    if (result.deferred) {
+      console.log(`PR #${refreshed.pull.number}: merge already in progress; deferring without another PUT`);
+      return { merged: false, mergeDeferred: true, refreshed, dispatches: [] };
+    }
+  }
   const dispatches = [];
   if (result?.merged === true) {
     for (const requirement of config.requiredWorkflows) {
@@ -948,7 +1014,7 @@ async function processPull(api, ownerApi, number, config, { allowMerge, includeQ
   await requestDependabotRefresh(ownerApi, assessment, config);
   const mergeAttempt = await maybeMerge(api, ownerApi, assessment, config, allowMerge);
   const finalAssessment = mergeAttempt.refreshed || assessment;
-  const body = renderComment({ assessment: finalAssessment, config, merged: mergeAttempt.merged, dispatches: mergeAttempt.dispatches || [] });
+  const body = renderComment({ assessment: finalAssessment, config, merged: mergeAttempt.merged, mergeDeferred: mergeAttempt.mergeDeferred === true, dispatches: mergeAttempt.dispatches || [] });
   await upsertComment(api, number, config.statusCommentMarker, body);
   const failedDispatches = (mergeAttempt.dispatches || []).filter((item) => item.state !== 'requested');
   if (mergeAttempt.merged && failedDispatches.length) {
