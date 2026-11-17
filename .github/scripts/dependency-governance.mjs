@@ -6,6 +6,7 @@ import process from 'node:process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import governanceConfig from '../dependency-governance.json' with { type: 'json' };
+import { runStaleDockerFallback, reportStaleRecoveryIncident } from './dependency-stale-fallback.mjs';
 
 const DEP_SECTIONS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
 const PAGE_SIZE = 100;
@@ -267,6 +268,75 @@ export function validateDockerSemanticChange(baseText, headText, metadata, allow
   return { eligible: reasons.length === 0, reasons: unique(reasons), changes };
 }
 
+/**
+ * Reconcile exactly ONE GitHub Actions SHA pin from a canonical signed
+ * Dependabot commit onto the currently accepted workflow. No YAML rewrite:
+ * every unrelated byte, action identity, and already-accepted pin survives.
+ * The caller verifies all GitHub source/file/commit identities separately.
+ */
+export function projectSignedActionsDelta({
+  sourceBaseText,
+  signedHeadText,
+  currentMainText,
+  signedMetadata,
+  workflowPath,
+  manualReviewPaths,
+}) {
+  if (typeof workflowPath !== 'string'
+    || !/^\.github\/workflows\/[A-Za-z0-9._-]+\.ya?ml$/.test(workflowPath)
+    || !Array.isArray(manualReviewPaths) || manualReviewPaths.includes(workflowPath)) {
+    throw new Error('Actions fallback excludes control-plane and unreviewed workflow paths');
+  }
+  if (!Array.isArray(signedMetadata) || signedMetadata.length !== 1) {
+    throw new Error('Actions fallback requires exactly one canonical signed update metadata record');
+  }
+  const texts = [sourceBaseText, signedHeadText, currentMainText];
+  if (texts.some((text) => typeof text !== 'string' || text.includes('\r') || text.includes('\0'))) {
+    throw new Error('Actions fallback requires exact UTF-8 LF source/parent/main bytes');
+  }
+  const source = sourceBaseText.split('\n');
+  const signed = signedHeadText.split('\n');
+  const live = currentMainText.split('\n');
+  if (signed.length !== source.length || live.length !== source.length) {
+    throw new Error('Actions workflow line structure changed; refuse unsafe projection');
+  }
+  const indices = source.flatMap((value, index) => (value === signed[index] ? [] : [index]));
+  if (indices.length !== 1) {
+    throw new Error('Actions fallback requires exactly one signed SHA pin line update');
+  }
+  const index = indices[0];
+  const before = parseActionUseLine(source[index]);
+  const after = parseActionUseLine(signed[index]);
+  if (!before || !after || before.action !== after.action || before.sha === after.sha
+    || signedMetadata[0].name !== after.action) {
+    throw new Error('Signed Actions source must update one SHA-pinned allowlisted action identity');
+  }
+  const sourceProof = validateActionsSemanticChange(
+    [workflowPath], { [workflowPath]: sourceBaseText },
+    { [workflowPath]: signedHeadText }, signedMetadata, manualReviewPaths,
+  );
+  if (!sourceProof.eligible) {
+    throw new Error('Signed Actions update is ineligible: ' + sourceProof.reasons.join('; '));
+  }
+  if (live[index] === signed[index]) {
+    return { state: 'already-accepted', content: currentMainText, index, changes: sourceProof.changes };
+  }
+  if (live[index] !== source[index]) {
+    throw new Error('Accepted main already changed the same GitHub Actions pin; refuse conflict');
+  }
+  const revised = live.slice();
+  revised[index] = signed[index];
+  const content = revised.join('\n');
+  const proof = validateActionsSemanticChange(
+    [workflowPath], { [workflowPath]: currentMainText },
+    { [workflowPath]: content }, signedMetadata, manualReviewPaths,
+  );
+  if (!proof.eligible) {
+    throw new Error('Projected Actions update is ineligible: ' + proof.reasons.join('; '));
+  }
+  return { state: 'projected', content, index, changes: proof.changes };
+}
+
 function parseActionUseLine(line) {
   const match = line.match(/^(\s*-?\s*uses:\s*)([^\s@]+)@([a-f0-9]{40}|[a-f0-9]{64})(\s+#\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?\s*)$/i);
   if (!match) return null;
@@ -378,7 +448,7 @@ export function validateConfig(config) {
   if (!Array.isArray(config?.allowedUpdateTypes) || config.allowedUpdateTypes.length === 0 || config.allowedUpdateTypes.some((type) => !/^(?:version|security)-update:semver-(?:patch|minor|major)$/.test(type))) {
     errors.push('allowedUpdateTypes must contain only canonical signed semver update classes');
   }
-  for (const critical of ['.github/workflows/security.yml', '.github/workflows/dependency-governance.yml', '.github/dependency-governance.json', '.github/scripts/dependency-governance.mjs', '.github/scripts/dependency-governance.selfcheck.mjs', '.github/scripts/validate_codeql_sarif.py', '.github/scripts/validate_codeql_sarif_selfcheck.py', '.github/scripts/validate_security_stack.py', '.github/dependabot.yml']) {
+  for (const critical of ['.github/workflows/security.yml', '.github/workflows/dependency-governance.yml', '.github/dependency-governance.json', '.github/scripts/dependency-governance.mjs', '.github/scripts/dependency-governance.selfcheck.mjs', '.github/scripts/dependency-stale-fallback.mjs', '.github/scripts/dependency-stale-fallback.selfcheck.mjs', '.github/scripts/validate_codeql_sarif.py', '.github/scripts/validate_codeql_sarif_selfcheck.py', '.github/scripts/validate_security_stack.py', '.github/dependabot.yml']) {
     if (!config?.manualReviewPaths?.includes(critical)) errors.push(`${critical} must require manual review`);
   }
   if (!Array.isArray(config?.ecosystems?.npm?.files) || config.ecosystems.npm.files.length === 0) errors.push('npm ecosystem files must be configured');
@@ -823,11 +893,17 @@ export async function requestDependabotRefresh(ownerApi, assessment, config, { o
   const headSha = String(assessment.pull.head?.sha || '');
   const markerFor = (command) => `${OWNER_REFRESH_MARKER}${headSha}:${assessment.baseSha}:${command} -->`;
   const comments = await ownerApi.paginate(`/issues/${number}/comments`);
-  const matching = (command) => comments.filter((comment) =>
-    String(comment.body || '').includes(markerFor(command))
-    && comment.user?.login === config.ownerApprovalLogin
-    && comment.user?.id === config.ownerApprovalUserId
-    && comment.performed_via_github_app == null);
+  // Native leases follow the immutable signed head, not unrelated accepted-main advances.
+  const matching = (command) => comments.filter((comment) => {
+    const prefix = `${OWNER_REFRESH_MARKER}${headSha}:`;
+    const suffix = `:${command} -->`;
+    const validMarker = String(comment.body || '').split('\n').some((line) =>
+      line.startsWith(prefix) && line.endsWith(suffix)
+      && /^[0-9a-f]{40}$/.test(line.slice(prefix.length, -suffix.length)));
+    return validMarker && comment.user?.login === config.ownerApprovalLogin
+      && comment.user?.id === config.ownerApprovalUserId
+      && comment.performed_via_github_app == null;
+  });
   const priorRebases = matching('rebase');
   const priorRecreates = matching('recreate');
   if (priorRebases.length > 1 || priorRecreates.length > 1) {
@@ -1045,9 +1121,29 @@ async function processPull(api, ownerApi, number, config, { allowMerge, includeQ
   const assessment = await assessPull(api, number, config, { includeQualification });
   if (assessment.pull.user?.login !== config.botLogin || assessment.pull.user?.id !== config.botUserId) return { skipped: true, reason: 'not canonical Dependabot' };
   await requestDependabotRefresh(ownerApi, assessment, config);
+  let fallbackResult;
+  try {
+    fallbackResult = await runStaleDockerFallback({
+      api, ownerApi, assessment, config, allowMerge,
+      helpers: { verifyOwnerIdentity, assessPull, projectSignedActionsDelta, qualificationForHead },
+    });
+  } catch (error) {
+    const incident = await reportStaleRecoveryIncident(
+      api, number, assessment.pull.head?.sha, error, assessment.ecosystem,
+    );
+    throw new Error('Dependency fallback incident #' + incident.incident + ': ' + error.message, { cause: error });
+  }
+  if (['verified', 'already-accepted'].includes(fallbackResult?.state)) {
+    return { skipped: false, assessment, merged: fallbackResult.state === 'verified', fallbackResult };
+  }
   const mergeAttempt = await maybeMerge(api, ownerApi, assessment, config, allowMerge);
   const finalAssessment = mergeAttempt.refreshed || assessment;
-  const body = renderComment({ assessment: finalAssessment, config, merged: mergeAttempt.merged, mergeDeferred: mergeAttempt.mergeDeferred === true, dispatches: mergeAttempt.dispatches || [] });
+  const body = renderComment({ assessment: finalAssessment, config, merged: mergeAttempt.merged, mergeDeferred: mergeAttempt.mergeDeferred === true, dispatches: mergeAttempt.dispatches || [] })
+    + (fallbackResult && fallbackResult.state !== 'not-stale-only'
+      ? '\n\n### Independent Actions recovery\n\nState: **' + fallbackResult.state + '**. '
+        + (fallbackResult.number ? 'Recovery PR #' + fallbackResult.number + '. ' : '')
+        + 'Exact-head qualification, owner approval and accepted-main proof remain required.\n'
+      : '');
   await upsertComment(api, number, config.statusCommentMarker, body);
   const failedDispatches = (mergeAttempt.dispatches || []).filter((item) => item.state !== 'requested');
   if (mergeAttempt.merged && failedDispatches.length) {
