@@ -60,7 +60,7 @@ function fixture({
     files: files || [{ filename: filePath, status: 'modified', sha: sha(sourceText) }],
   };
   const filesByRef = new Map([[originalSha, sourceBaseText], [head, sourceText], [mainSha, mainText]]);
-  const state = { refs: new Map(), prs: [], comments: [...comments], wakeComments: [], wakeEvents: [], wakeFail: null, ownerPatches: [], apiPosts: [], retryComments: [], dispatchFailOnce: false, postMergeRuns: null, reviews: [], merge: null, status: 'missing', main: mainSha, now };
+  const state = { refs: new Map(), prs: [], comments: [...comments], wakeComments: [], wakeEvents: [], wakeFail: null, ownerPatches: [], apiPosts: [], retryComments: [], dispatchFailOnce: false, postMergeRuns: null, omitDetailedMerged: false, reviews: [], merge: null, status: 'missing', main: mainSha, now };
   const recoveryBranch = 'dependency-recovery/' + (ecosystem === 'github-actions' ? 'actions-pr-' : 'docker-pr-') + '41-' + head.slice(0, 12);
   const api = {
     owner: 'o',
@@ -86,11 +86,16 @@ function fixture({
         const ref = path.split('/').at(-1);
         return { tree: { sha: 'e'.repeat(40) }, parents: state.parents?.get(ref) || [] };
       }
-      if (path.startsWith('/pulls/')) return state.prs.find((pr) => pr.number === Number(path.split('/')[2]));
+      if (path.startsWith('/pulls/')) {
+        const pr = state.prs.find((item) => item.number === Number(path.split('/')[2]));
+        if (state.omitDetailedMerged && pr) { const { merged, ...incomplete } = pr; return incomplete; }
+        return pr;
+      }
       throw new Error('fixture GET ' + path);
     },
     async paginate(path) {
-      if (path.startsWith('/pulls?')) return state.prs;
+      // Actual REST LIST /pulls does not expose merged boolean even when merged_at is set.
+      if (path.startsWith('/pulls?')) return state.prs.map(({ merged, ...listed }) => listed);
       if (path.startsWith('/pulls/') && path.endsWith('/files')) return [{ filename: filePath, status: 'modified' }];
       if (path.startsWith('/actions/runs?')) return state.postMergeRuns ?? (state.status === 'verified' ? config.requiredWorkflows.map((g, i) => ({
         id: i + 1, name: g.workflow, path: '.github/workflows/' + g.file, head_sha: state.merge,
@@ -373,6 +378,34 @@ test('an advanced accepted main cannot authorize replay of an old owner CI wake'
   assert.equal((await run(f)).state, 'wake-main-advanced-retry');
   assert.equal(f.state.prs[0].state, 'closed');
   assert.equal(f.state.ownerPatches.length, 1, 'failed reopen is not an accepted server-side mutation');
+});
+
+test('real GitHub list omits merged: canonical detail GET blocks source closure until verified main', async () => {
+  const f = actionsFixture();
+  await run(f);
+  f.state.status = 'passed';
+  await run(f);
+  const listed = await f.api.paginate('/pulls?state=all&head=o%3Aignored');
+  assert.equal(Object.hasOwn(listed[0], 'merged'), false,
+    'GitHub REST LIST does not publish merged boolean');
+  assert.equal(listed[0].merged_at, '2026-11-17T03:00:00Z');
+  const pending = await run(f);
+  assert.equal(pending.state, 'merged-awaiting-verification',
+    'list omission must never select already-accepted unverified shortcut');
+  assert.equal(f.source.state, 'open');
+  f.state.status = 'verified';
+  assert.equal((await run(f)).state, 'verified');
+  assert.equal(f.source.state, 'closed');
+});
+
+test('missing canonical detail merged flag fails closed instead of bypassing postmerge proof', async () => {
+  const f = actionsFixture();
+  await run(f);
+  f.state.status = 'passed';
+  await run(f);
+  f.state.omitDetailedMerged = true;
+  await assert.rejects(() => run(f), /merged state is unverified/);
+  assert.equal(f.source.state, 'open');
 });
 
 test('post-merge dispatch interruption replays absent gates, with a durable retry lease and no premature source closure', async () => {
