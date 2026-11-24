@@ -837,6 +837,13 @@ export async function verifyOwnerIdentity(ownerApi, config) {
   }
 }
 
+/** Authenticate owner availability even when no signed Dependabot candidate exists. */
+export async function verifyScheduledOwnerReadiness({ eventName, ownerApi, config }) {
+  if (eventName !== 'schedule') return { checked: false };
+  await verifyOwnerIdentity(ownerApi, config);
+  return { checked: true, identity: 'verified' };
+}
+
 export async function hasExactOwnerApproval(ownerApi, number, headSha, config) {
   const reviews = await ownerApi.paginate(`/pulls/${number}/reviews`);
   return reviews.some((review) => review.state === 'APPROVED'
@@ -1168,6 +1175,7 @@ async function main() {
   const allowMerge = process.env.ALLOW_MERGE === 'true';
 
   if (eventName === 'schedule' || eventName === 'push') {
+    const ownerReadiness = await verifyScheduledOwnerReadiness({ eventName, ownerApi, config });
     const listDependabotPulls = async () => {
       const pulls = await api.paginate('/pulls?state=open');
       return pulls.filter(
@@ -1183,6 +1191,7 @@ async function main() {
       reconciled: reconciliation.results.length,
       passes: reconciliation.passes,
       failed: reconciliation.failures,
+      ownerReadiness,
     }, null, 2));
     if (reconciliation.failures.length) {
       throw new Error(`scheduled dependency governance failed for ${reconciliation.failures.length} PR attempt(s)`);
