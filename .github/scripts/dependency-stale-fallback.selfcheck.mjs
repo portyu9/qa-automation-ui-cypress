@@ -60,7 +60,7 @@ function fixture({
     files: files || [{ filename: filePath, status: 'modified', sha: sha(sourceText) }],
   };
   const filesByRef = new Map([[originalSha, sourceBaseText], [head, sourceText], [mainSha, mainText]]);
-  const state = { refs: new Map(), prs: [], comments: [...comments], ownerPatches: [], apiPosts: [], reviews: [], merge: null, status: 'missing', main: mainSha, now };
+  const state = { refs: new Map(), prs: [], comments: [...comments], wakeComments: [], wakeEvents: [], wakeFail: null, ownerPatches: [], apiPosts: [], reviews: [], merge: null, status: 'missing', main: mainSha, now };
   const recoveryBranch = 'dependency-recovery/' + (ecosystem === 'github-actions' ? 'actions-pr-' : 'docker-pr-') + '41-' + head.slice(0, 12);
   const api = {
     owner: 'o',
@@ -101,6 +101,7 @@ function fixture({
         const n = Number(path.split('/')[3]);
         return [{ name: config.requiredWorkflows[n - 1].gate, status: 'completed', conclusion: 'success' }];
       }
+      if (path === '/issues/73/events') return state.wakeEvents;
       if (path.includes('/reviews')) return state.reviews;
       if (path === '/issues?state=open') return (state.issues || []).filter((issue) => issue.state !== 'closed');
       throw new Error('fixture paginate ' + path);
@@ -138,7 +139,7 @@ function fixture({
       if (path.startsWith('/issues/')) { const issue = state.issues?.find((i) => String(i.number) === path.split('/')[2]); if (!issue) throw Error('missing incident'); issue.state = body.state; return issue; }
       throw new Error('fixture patch ' + path);
     },
-    async put(path) {
+    async put(path, body) {
       if (!path.endsWith('/merge')) throw new Error('unexpected mutation');
       const pr = state.prs[0]; pr.merged = true; pr.state = 'closed';
       pr.merge_commit_sha = '9'.repeat(40); pr.merged_at = '2026-11-17T03:00:00Z';
@@ -152,13 +153,37 @@ function fixture({
   const ownerApi = {
     async paginate(path) {
       if (path.includes('/reviews')) return state.reviews;
+      if (path === '/issues/73/comments') return state.wakeComments;
       if (path.includes('/comments')) return state.comments;
       throw new Error('owner paginate ' + path);
     },
-    async patch(path, body) { state.ownerPatches.push({ path, body }); state.prs[0].state = body.state; return state.prs[0]; },
+    async patch(path, body) {
+      // Simulate failed HTTP mutation before any server-side state transition.
+      if (body.state === 'open' && state.wakeFail === 'after-close') {
+        state.wakeFail = null;
+        throw new Error('injected interruption after owner close');
+      }
+      state.ownerPatches.push({ path, body });
+      const pr = state.prs[0];
+      pr.state = body.state;
+      if (body.state === 'closed') {
+        pr.closed_at = '2026-11-17T03:59:59Z';
+        state.wakeEvents.push({ event: 'closed', actor: owner, created_at: pr.closed_at });
+      } else if (body.state === 'open') {
+        pr.closed_at = null;
+        state.wakeEvents.push({ event: 'reopened', actor: owner, created_at: '2026-11-17T04:00:00Z' });
+      }
+      return pr;
+    },
     async post(path, body) {
       if (path.includes('/reviews')) state.reviews.push({ user: owner, state: 'APPROVED', commit_id: body.commit_id });
-      if (path.includes('/comments')) state.comments.push({ body: body.body, user: owner });
+      if (path === '/issues/73/comments') {
+        state.wakeComments.push({ id: 300, user: owner, created_at: '2026-11-17T03:59:58Z', body: body.body });
+        if (state.wakeFail === 'after-checkpoint') {
+          state.wakeFail = null;
+          throw new Error('injected interruption after owner checkpoint');
+        }
+      } else if (path.includes('/comments')) state.comments.push({ body: body.body, user: owner });
       return {};
     },
   };
@@ -262,6 +287,8 @@ test('Actions recovery resumes orphaned branch and records typed incidents witho
   const f = actionsFixture();
   await run(f);
   f.state.prs.splice(0);
+  f.state.wakeComments.length = 0;
+  f.state.wakeEvents.length = 0; // The simulated PR has not been published, so neither has its owner wake.
   assert.equal((await run(f)).state, 'recovery-pr-created');
   assert.equal(f.state.prs.length, 1);
   const incident = await reportStaleRecoveryIncident(f.api, 41, head, new Error('injected actions timeout'), 'github-actions');
@@ -269,3 +296,68 @@ test('Actions recovery resumes orphaned branch and records typed incidents witho
   assert.match(f.state.issues[0].body, /dependency-stale-actions-incident/);
   assert.equal((await reportStaleRecoveryIncident(f.api, 41, head, new Error('same source'), 'github-actions')).incident, 101);
 });
+
+test('owner wake interrupted after close resumes the same immutable PR exactly once', async () => {
+  const f = actionsFixture();
+  f.state.wakeFail = 'after-close';
+  await assert.rejects(() => run(f), /injected interruption after owner close/);
+  assert.equal(f.state.prs[0].state, 'closed');
+  const recoveryHead = f.state.prs[0].head.sha;
+  const outcome = await run(f);
+  assert.equal(outcome.state, 'recovery-pr-reopened');
+  assert.equal(f.state.prs.length, 1);
+  assert.equal(f.state.prs[0].state, 'open');
+  assert.equal(f.state.prs[0].head.sha, recoveryHead);
+  assert.equal(f.state.wakeComments.length, 1);
+  assert.deepEqual(f.state.wakeEvents.map((event) => event.event), ['closed', 'reopened']);
+  assert.equal((await run(f)).state, 'qualifying');
+  assert.equal(f.state.ownerPatches.length, 2, 'no duplicate wake');
+});
+
+test('checkpoint persisted before first close is resumed without creating another PR or comment', async () => {
+  const f = actionsFixture();
+  f.state.wakeFail = 'after-checkpoint';
+  await assert.rejects(() => run(f), /injected interruption after owner checkpoint/);
+  assert.equal(f.state.prs[0].state, 'open');
+  assert.equal(f.state.wakeEvents.length, 0);
+  const outcome = await run(f);
+  assert.equal(outcome.state, 'recovery-pr-created');
+  assert.equal(f.state.prs.length, 1);
+  assert.equal(f.state.wakeComments.length, 1);
+  assert.deepEqual(f.state.wakeEvents.map((event) => event.event), ['closed', 'reopened']);
+});
+
+test('a later intentional owner closure cannot be mistaken for a pending CI wake', async () => {
+  const f = actionsFixture();
+  await run(f);
+  f.state.prs[0].state = 'closed';
+  f.state.prs[0].closed_at = '2026-11-17T04:00:00Z';
+  f.state.wakeEvents.push({ event: 'closed', actor: owner, created_at: '2026-11-17T04:00:00Z' });
+  await assert.rejects(() => run(f), /ambiguous or non-owner recovery PR close\/reopen events/);
+  assert.equal(f.state.prs[0].state, 'closed');
+  assert.deepEqual(f.state.ownerPatches.map((p) => p.body.state), ['closed', 'open']);
+});
+
+test('forged checkpoint, forged close actor and absent checkpoint fail closed before reopen', async () => {
+  const f = actionsFixture();
+  f.state.wakeFail = 'after-close';
+  await assert.rejects(() => run(f), /injected interruption after owner close/);
+  f.state.wakeComments[0].user = { login: 'attacker', id: 17 };
+  await assert.rejects(() => run(f), /not a proven incomplete owner CI wake/);
+  f.state.wakeComments[0].user = owner;
+  f.state.wakeEvents[0].actor = { login: 'attacker', id: 17 };
+  await assert.rejects(() => run(f), /non-owner recovery PR close\/reopen events/);
+  assert.equal(f.state.prs[0].state, 'closed');
+});
+
+test('an advanced accepted main cannot authorize replay of an old owner CI wake', async () => {
+  const f = actionsFixture();
+  f.state.wakeFail = 'after-close';
+  await assert.rejects(() => run(f), /injected interruption after owner close/);
+  f.state.main = 'f'.repeat(40);
+  f.filesByRef.set(f.state.main, actionAccepted);
+  assert.equal((await run(f)).state, 'wake-main-advanced-retry');
+  assert.equal(f.state.prs[0].state, 'closed');
+  assert.equal(f.state.ownerPatches.length, 1, 'failed reopen is not an accepted server-side mutation');
+});
+
