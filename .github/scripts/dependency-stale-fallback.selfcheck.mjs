@@ -376,7 +376,7 @@ test('an advanced accepted main cannot authorize replay of an old owner CI wake'
 });
 
 test('post-merge dispatch interruption replays absent gates, with a durable retry lease and no premature source closure', async () => {
-  const f = fixture();
+  const f = actionsFixture();
   await run(f);
   f.state.status = 'passed';
   f.state.dispatchFailOnce = true;
@@ -403,7 +403,7 @@ test('post-merge dispatch interruption replays absent gates, with a durable retr
 });
 
 test('post-merge retry excludes already observed workflows even when incomplete', async () => {
-  const f = fixture();
+  const f = actionsFixture();
   await run(f);
   f.state.status = 'passed';
   await run(f);
@@ -424,7 +424,7 @@ test('post-merge retry excludes already observed workflows even when incomplete'
 });
 
 test('post-merge retry refuses advanced main and never dispatches the wrong commit', async () => {
-  const f = fixture();
+  const f = actionsFixture();
   await run(f);
   f.state.status = 'passed';
   await run(f);
@@ -439,7 +439,7 @@ test('post-merge retry refuses advanced main and never dispatches the wrong comm
 });
 
 test('interrupted retry checkpoint survives later wake and only replays after lease expires', async () => {
-  const f = fixture();
+  const f = actionsFixture();
   await run(f);
   f.state.status = 'passed';
   f.state.dispatchFailOnce = true;
