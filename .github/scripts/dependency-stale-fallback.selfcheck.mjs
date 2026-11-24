@@ -88,14 +88,22 @@ function fixture({
       }
       if (path.startsWith('/pulls/')) {
         const pr = state.prs.find((item) => item.number === Number(path.split('/')[2]));
-        if (state.omitDetailedMerged && pr) { const { merged, ...incomplete } = pr; return incomplete; }
+        if (state.omitDetailedMerged && pr) {
+          const incomplete = { ...pr };
+          delete incomplete.merged;
+          return incomplete;
+        }
         return pr;
       }
       throw new Error('fixture GET ' + path);
     },
     async paginate(path) {
       // Actual REST LIST /pulls does not expose merged boolean even when merged_at is set.
-      if (path.startsWith('/pulls?')) return state.prs.map(({ merged, ...listed }) => listed);
+      if (path.startsWith('/pulls?')) return state.prs.map((pr) => {
+        const listed = { ...pr };
+        delete listed.merged;
+        return listed;
+      });
       if (path.startsWith('/pulls/') && path.endsWith('/files')) return [{ filename: filePath, status: 'modified' }];
       if (path.startsWith('/actions/runs?')) return state.postMergeRuns ?? (state.status === 'verified' ? config.requiredWorkflows.map((g, i) => ({
         id: i + 1, name: g.workflow, path: '.github/workflows/' + g.file, head_sha: state.merge,
